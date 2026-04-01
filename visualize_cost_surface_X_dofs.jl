@@ -28,10 +28,10 @@ loss_name = "quadra"
 loss_function = quadra
 
 # Test parameters
-max_disp = 10
+max_disp = 0.01
 verbose = true
 
-println("=== Cost Surface Visualization ===")
+println("=== Cost Surface Visualization (Varying X DOFs) ===")
 
 vec3(v,ind) = SVector{3}(v[i] for i∈ind)
 @functor with() zeromotion(x,t) = x[1]
@@ -175,83 +175,147 @@ addelement!(model_inv, DofCost, [nodeList_inv[1][1], nodeList_inv[1][2], anodeLi
 initialstate_inv = initialize!(model_inv)
 staticStates_inv = solve(SweepX{0}; initialstate=initialstate_inv, time=staticLoadSteps, verbose=false, maxΔx=1e-6, maxiter=60)
 
-    
-# Range for A parameters
-γ₀_range = range(-0.05, 0.05, length=21)
-γ₁_range = range(-0.2, 0.2, length=21)
+# Reference X vector (baseline from solved state)
+ref_state = staticStates_inv[end]
+ref_Xvec = Float64[]
+nodes = [nodeList_inv[1][1], nodeList_inv[1][2]]
+fields = [:t1, :t2, :t3]
+for node in nodes
+    for field in fields
+        val = getdof(ref_state; class=:X, field=field, nodID=[node])[1]
+        push!(ref_Xvec, val)
+    end
+end
+
+# Extract static equilibrium positions for node 2 (last 3 DOFs)
+static_t1_node2 = ref_Xvec[4]
+static_t2_node2 = ref_Xvec[5]
+static_t3_node2 = ref_Xvec[6]
+
+println("Static equilibrium positions for node 2:")
+println("  t1_node2 = $static_t1_node2")
+println("  t2_node2 = $static_t2_node2")
+println("  t3_node2 = $static_t3_node2")
+
+# Define DOF ranges for varying X displacements around static positions
+# Only vary the last 3 DOFs of node 2: t1_node2, t2_node2, t3_node2
+dof_names = ["t1_node2", "t2_node2", "t3_node2"]
+dof_indices = [4, 5, 6]  # indices in the full X vector
+dof_variations = [1.5, 2., 1.5]  # variation amplitude around static position
+dof_ranges = [
+    range(static_t1_node2 - dof_variations[1], static_t1_node2 + dof_variations[1], length=15),  # t1_node2 (x displacement)
+    range(static_t2_node2 - dof_variations[2], static_t2_node2 + dof_variations[2], length=15),  # t2_node2 (y displacement)
+    range(static_t3_node2 - dof_variations[3], static_t3_node2 + dof_variations[3], length=15),  # t3_node2 (z displacement)
+]
+
+# Pairs of DOFs to visualize
+dof_pairs = [
+    (1, 2),  # t1_node2 vs t2_node2
+    (1, 3),  # t1_node2 vs t3_node2
+    (2, 3),  # t2_node2 vs t3_node2
+]
 
 # Compute cost at different time steps
 time_indices = [1, div(length(inverseLoadSteps), 4), div(length(inverseLoadSteps), 2), length(inverseLoadSteps)]
 
-for t_idx in time_indices
-    t_val = inverseLoadSteps[t_idx]
-    println("\n--- Time step $t_idx, t = $t_val ---")
-    
-    costs = zeros(length(γ₀_range), length(γ₁_range))
-    
-    for (i, γ₀) in enumerate(γ₀_range)
-        for (j, γ₁) in enumerate(γ₁_range)
-            # Compute cost for this A vector
+for (pair_i, pair_j) in dof_pairs
+    dof_i = dof_indices[pair_i]
+    dof_j = dof_indices[pair_j]
+    for t_idx in time_indices
+        t_val = inverseLoadSteps[t_idx]
+        println("\n--- Time step $t_idx, t = $t_val, DOFs: $(dof_names[pair_i]) vs $(dof_names[pair_j]) ---")
+        
+        costs = zeros(length(dof_ranges[pair_i]), length(dof_ranges[pair_j]))
+        
+        for (ii, val_i) in enumerate(dof_ranges[pair_i])
+            for (jj, val_j) in enumerate(dof_ranges[pair_j])
+                try
+                    # Get state at this time step
+                    temp_state = solve(SweepX{2}; initialstate=staticStates_inv[end], time=collect(inverseLoadSteps[1:t_idx]), verbose=false, maxiter=20)
+                    state_at_t = temp_state[end]
+                    
+                    # Create X vector with varying DOFs
+                    X_var = copy(ref_Xvec)
+                    X_var[dof_i] = val_i
+                    X_var[dof_j] = val_j
+                    
+                    X_dofs = (X_var,)
+                    A_dofs = SVector(0.0, 0.0)  # Use reference A values
+                    cost_val = VALUE(straincost(X_dofs, nothing, A_dofs, t_val)) .+ VALUE(costA(A_dofs[1])) .+ VALUE(costAother(A_dofs[2]))
+                    costs[ii, jj] = cost_val
+                    
+                catch e
+                    costs[ii, jj] = NaN
+                    verbose && println("  Error at $(dof_names[pair_i])=$val_i, $(dof_names[pair_j])=$val_j: $e")
+                end
+            end
+        end
+        
+        # Find minimum
+        min_cost, min_idx = findmin(costs)
+        min_ii, min_jj = Tuple(min_idx)
+        println("  Min cost = $min_cost at $(dof_names[pair_i]) = $(dof_ranges[pair_i][min_ii]), $(dof_names[pair_j]) = $(dof_ranges[pair_j][min_jj])")
+        
+        # Plot contours
+        fig = Figure(size=(800, 700))
+        ax = Axis(fig[1,1], xlabel=dof_names[pair_i], ylabel=dof_names[pair_j], 
+                    title="Cost surface (X DOFs): max_disp = $max_disp, t = $t_val")
+        contourf!(ax, dof_ranges[pair_i], dof_ranges[pair_j], costs, levels=20)
+        Colorbar(fig[1,2], label="Cost")
+        # Mark the minimum
+        scatter!(ax, [dof_ranges[pair_i][min_ii]], [dof_ranges[pair_j][min_jj]], color=:red, markersize=10, label="Min")
+        axislegend(ax)
+        save("figs/cost_surface_X_$(dof_names[pair_i])_$(dof_names[pair_j])_t_$(t_idx)_"*loss_name*".png", fig)
+        println("  Saved: figs/cost_surface_X_$(dof_names[pair_i])_$(dof_names[pair_j])_t_$(t_idx).png")
+    end
+end
+
+# Also generate 1D cost profiles for individual DOFs
+println("\n=== Generating 1D Cost Profiles for Individual DOFs ===")
+for dof_loc in 1:3
+    dof_idx = dof_indices[dof_loc]
+    for t_idx in time_indices
+        t_val = inverseLoadSteps[t_idx]
+        println("\n--- Time step $t_idx, t = $t_val, DOF: $(dof_names[dof_loc]) ---")
+        
+        costs_1d = zeros(length(dof_ranges[dof_loc]))
+        
+        for (ii, val_i) in enumerate(dof_ranges[dof_loc])
             try
-                # Get state at this time step (need to solve)
+                # Get state at this time step
                 temp_state = solve(SweepX{2}; initialstate=staticStates_inv[end], time=collect(inverseLoadSteps[1:t_idx]), verbose=false, maxiter=20)
                 state_at_t = temp_state[end]
                 
-                # Inside your cost loop:
-                nodes = [nodeList_inv[1][1], nodeList_inv[1][2]]
-                fields = [:t1, :t2, :t3]
-                Xvec = Float64[]
-                for node in nodes
-                    for field in fields
-                        val = getdof(state_at_t; class=:X, field=field, nodID=[node])[1]
-                        push!(Xvec, val)
-                    end
-                end
-                @show X_dofs = (Xvec,)
-                A_dofs = SVector(γ₀, γ₁)
+                # Create X vector with varying DOF
+                X_var = copy(ref_Xvec)
+                X_var[dof_idx] = val_i
+                
+                X_dofs = (X_var,)
+                A_dofs = SVector(0.0, 0.0)
                 cost_val = VALUE(straincost(X_dofs, nothing, A_dofs, t_val)) .+ VALUE(costA(A_dofs[1])) .+ VALUE(costAother(A_dofs[2]))
-                costs[i, j] = cost_val
-
+                costs_1d[ii] = cost_val
+                
             catch e
-                costs[i, j] = NaN
-                verbose && println("  Error at γ₀=$γ₀, γ₁=$γ₁: $e")
+                costs_1d[ii] = NaN
+                verbose && println("  Error at $(dof_names[dof_loc])=$val_i: $e")
             end
         end
+        
+        # Find minimum
+        min_cost, min_idx = findmin(costs_1d)
+        println("  Min cost = $min_cost at $(dof_names[dof_loc]) = $(dof_ranges[dof_loc][min_idx])")
+        
+        # Plot 1D cost profile
+        fig = Figure(size=(800, 600))
+        ax = Axis(fig[1,1], xlabel=dof_names[dof_loc], ylabel="Cost",
+                    title="1D Cost Profile: max_disp = $max_disp, t = $t_val")
+        lines!(ax, dof_ranges[dof_loc], costs_1d, color=:blue, linewidth=2)
+        scatter!(ax, [dof_ranges[dof_loc][min_idx]], [minimum(costs_1d)],
+                    color=:red, markersize=10, label="Min")
+        axislegend(ax)
+        save("figs/cost_profile_1d_$(dof_names[dof_loc])_t_$(t_idx)_"*loss_name*".png", fig)
+        println("  Saved: figs/cost_profile_1d_$(dof_names[dof_loc])_t_$(t_idx).png")
     end
-    
-    # Find minimum
-    min_cost, min_idx = findmin(costs)
-    min_i, min_j = Tuple(min_idx)
-    println("  Min cost = $min_cost at γ₀ = $(γ₀_range[min_i]), γ₁ = $(γ₁_range[min_j])")
-    
-    # Plot contours
-    fig = Figure(size=(800, 700))
-    ax = Axis(fig[1,1], xlabel="γ₀ (static bias)", ylabel="γ₁ (dynamic multiplier)", 
-                title="Cost surface: max_disp = $max_disp, t = $t_val")
-    contourf!(ax, γ₀_range, γ₁_range, costs, levels=20)
-    Colorbar(fig[1,2], label="Cost")
-    # Mark the minimum
-    scatter!(ax, [γ₀_range[min_i]], [γ₁_range[min_j]], color=:red, markersize=10, label="Min")
-    axislegend(ax)
-    save("figs/cost_surface_max_disp_$(max_disp)_t_$(t_idx)_"*loss_name*".png", fig)
-    println("  Saved: figs/cost_surface_max_disp_$(max_disp)_t_$(t_idx).png")
-
-    println("\n--- Plotting cost vs γ₀ at γ₁ = 0.0, t = $t_val ---")
-
-    # Extract cost values for γ₁ = 0.0
-    j_zero = findfirst(==(0.0), γ₁_range)
-    costs_vs_γ₀ = costs[:, j_zero]
-
-    # Plot cost vs γ₀
-    fig = Figure(size=(800, 600))
-    ax = Axis(fig[1,1], xlabel="γ₀ (static bias)", ylabel="Cost",
-                title="Cost vs γ₀: max_disp = $max_disp, γ₁ = 0.0, t = $t_val")
-    lines!(ax, γ₀_range, costs_vs_γ₀, color=:blue, linewidth=2)
-    scatter!(ax, [γ₀_range[argmin(costs_vs_γ₀)]], [minimum(costs_vs_γ₀)],
-                color=:red, markersize=10, label="Min")
-    axislegend(ax)
-    save("figs/cost_vs_γ₀_max_disp_$(max_disp)_t_$(t_idx)_"*loss_name*".png", fig)
-    println("  Saved: figs/cost_vs_γ₀_max_disp_$(max_disp)_t_$(t_idx).png")
 end
 
 println("\nVisualization complete!")
