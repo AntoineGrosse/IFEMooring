@@ -12,8 +12,8 @@ g = 9.81
 σ = 1e-2  # 1% strain error threshold (was 1.0 - caused tiny gradients!)
 Ca0 = 1e-3
 Ca1 = 1e3
-δ = 1e-2 # For Huber loss
 
+δ = 1e-2 # For Huber loss
 quadra(x) = x⋅x # quadratic loss
 expo(x) = 1 - exp(- x⋅x) # exponetial loss
 cauchy(x) = log(1 + x⋅x) # Cauchy loss
@@ -23,17 +23,17 @@ scaled_quadra(x) = sqrt(1 + x⋅x) # Custom
 ch(x) = cosh(x) # Cosh
 logch(x) = log(ch(x)) # Logcosh
 
-loss_function = expo
+loss_function = quadra
 
 max_disp = 1
-static_bias = 0.015 
+static_bias = 0.00015 
 
 vec3(v,ind) = SVector{3}(v[i] for i∈ind)
 @functor with() zeromotion(x,t) = x[1]
 
 # Parameters
-nsteps = 10  # REDUCED from 50 for faster testing (increase once convergence works)
-Δtᵢₙᵥ = 0.01
+nsteps = 100  # REDUCED from 50 for faster testing (increase once convergence works)
+Δtᵢₙᵥ = 0.1
 inverseLoadSteps = (0:Δtᵢₙᵥ:(nsteps)*Δtᵢₙᵥ) .+ eps()
 
 # Materials
@@ -212,8 +212,8 @@ element1 = elementList_inv[1]
     # This makes cost magnitude independent of absolute strain scale
     cost_val = loss_function(Δε / σ)
     
-    # Debug prints (only at t == -5.0 for brevity)
-    if VALUE(t) == -0.0
+    # Debug prints (only at first time step for brevity)
+    if VALUE(t) < eps()  # Near t=0
         println("ε_val: ", VALUE(ε_val))
         println("A: ", VALUE.(A))
         println("εₚ: ", VALUE(εₚ))
@@ -221,18 +221,6 @@ element1 = elementList_inv[1]
         println("Δε: ", VALUE(Δε))
         println("Δε/σ (scaled): ", VALUE(Δε)/σ)
         println("cost_val: ", VALUE(cost_val))
-        println("[Gradient scaling enabled: σ=0.01 increases gradients ~100x]")
-        
-        # Extract and display gradients w.r.t. A and X
-        Ptot = precedence(cost_val)
-        Ntot = npartial(cost_val)
-        if Ptot > 0 && Ntot > 0
-            ∂cost_all = ∂{Ptot, Ntot}(cost_val)
-            # Show some of the gradient components
-            println("∂cost/∂Xvec[1]: ", VALUE(∂cost_all[1]))
-            println("∂cost/∂A[1]: ", VALUE(∂cost_all[Ntot-1]))
-            println("∂cost/∂A[2]: ", VALUE(∂cost_all[Ntot]))
-        end
     end
     
     return cost_val
@@ -243,6 +231,15 @@ edofcost = addelement!(model_inv, DofCost, [nodeList_inv[1][1], nodeList_inv[1][
     xinod=(1,1,1,2,2,2), xfield=(:t1,:t2,:t3,:t1,:t2,:t3),
     ainod=(3,3), afield=(:γ₀,:γ₁),
     cost=straincost)
+
+# Scaling
+# Use the same order-of-magnitude separation suggested by study_scale,
+# but keep the model two-parameter (γ₀ and γ₁).
+scale = (
+    X=(t1=2.1, t2=1.4e3, t3=3.7, λt1=3.5e8, λt2=2.5e8, λt3=1.5e8),
+    A=(γ₀=3.7, γ₁=2.8e2),
+)
+setscale!(model_inv; scale = scale, Λscale = 1e0)
 
 # Solve
 initialstate_inv = initialize!(model_inv)
@@ -257,10 +254,10 @@ println("="^70)
 
 # Test 1: Evaluate cost at current state
 println("\n▶ TEST 1: Cost function evaluation at initial state")
-state_check = staticStates_inv[end]
-t_check = -5.0
+t_check = 0.0  # Use actual inverse time step, not -5.0
 
 # Get X for the first element dofs
+state_check = staticStates_inv[end]
 X_current = (SVector{6}(state_check.X[1][j] for j in 1:6),)  
 A_current = SVector(0.0, 0.0)  # Initial A
 
@@ -269,15 +266,22 @@ println("  Cost at A=[0,0]: $(VALUE(cost_initial))")
 
 # Test 2: Cost at slightly perturbed A
 println("\n▶ TEST 2: Cost sensitivity to A parameters")
-A_test2 = SVector(0.01, 0.0)
+δA = 1e-6
+A_test2 = SVector(δA, 0.0)
 cost_test2 = straincost(X_current, (), A_test2, t_check)
-δA1_effect = (VALUE(cost_test2) - VALUE(cost_initial)) / 0.01
-println("  ∂cost/∂A[1] ≈ $δA1_effect (finite diff)")
+A1_fd = (VALUE(cost_test2) - VALUE(cost_initial)) / δA
+println("  ∂cost/∂A[1] ≈ $A1_fd (finite diff)")
 
-A_test3 = SVector(0.0, 0.01)
+A_test3 = SVector(0.0, δA)
 cost_test3 = straincost(X_current, (), A_test3, t_check)
-δA2_effect = (VALUE(cost_test3) - VALUE(cost_initial)) / 0.01
-println("  ∂cost/∂A[2] ≈ $δA2_effect (finite diff)")
+A2_fd = (VALUE(cost_test3) - VALUE(cost_initial)) / δA
+println("  ∂cost/∂A[2] ≈ $A2_fd (finite diff)")
+
+# IMPORTANT: Check consistency
+if abs(A2_fd) < 0.1 * abs(A1_fd)
+    println("  NOTE: γ₁ is much less observable than γ₀ in this cost.")
+    println("        That is expected from the strain model.")
+end
 
 # Test 3: Check AD gradients
 println("\n▶ TEST 3: AD gradient computation")
@@ -290,6 +294,13 @@ if Ptot > 0 && Ntot > 0
     ∂_vals = ∂{Ptot, Ntot}(cost_with_ad)
     println("  ∂cost/∂A[1] (AD) = $(VALUE(∂_vals[Ntot-1]))")
     println("  ∂cost/∂A[2] (AD) = $(VALUE(∂_vals[Ntot]))")
+    # Check consistency with finite diff
+    fd_1 = A1_fd
+    ad_1 = VALUE(∂_vals[Ntot-1])
+    if abs(fd_1 - ad_1) > 0.1 * max(abs(fd_1), abs(ad_1))
+        println("  ⚠️  WARNING: Finite diff and AD differ by >10%!")
+        println("     This indicates a possible issue with A parameter extraction.")
+    end
 else
     println("  WARNING: No gradient computed!")
 end
@@ -325,7 +336,7 @@ stateXUA = solve(InverseSolver;
     maxΔu=Inf,
     maxΔa=1e-4,   # REDUCED from 1e-3 to focus on A convergence
     maxΔλ=Inf,
-    saveiter=false
+    saveiter=true
 )
 
 laststep = findlastassigned(stateXUA)
@@ -338,3 +349,13 @@ if laststep > 0
 else
     println("Did not converge")
 end
+
+# println("\n=== Scaling at first iteration ===")
+# Muscade.describeScale(stateXUA[1][1][1])
+# println("\n=== Scaling at last iteration ===")
+# Muscade.describeScale(stateXUA[laststep][1][1])
+
+println("\n=== Scaling at first iteration ===")
+Muscade.study_scale(stateXUA[1][1][1]; SP = stateXUA[1][1][1].SP)
+# println("\n=== Scaling at last iteration ===")
+# Muscade.study_scale(stateXUA[laststep][1][1]; SP = stateXUA[laststep][1][1].SP)
