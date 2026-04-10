@@ -16,14 +16,14 @@ g = 9.81
 @show Ca1 = 1e3
 # U cost
 @show Cu0 = 1e-2
-@show Cu1 = 1e-1
+@show Cu1 = 1e2
 # X cost
 @show Cx1 = 1e10
 @show Cc1 = 1e6
 
 # Parameters
-attenuationFactor = 0.01
-static_bias = 0.00 # Static bias to retrieve
+attenuationFactor = 0.5
+static_bias = 0.0015 # Static bias to retrieve
 Δtᵢₙᵥ = 1.
 nsteps = 2e2
 staticLoadSteps = (-10:0.1:0)
@@ -31,22 +31,22 @@ inverseLoadSteps = (0:Δtᵢₙᵥ:(nsteps)*Δtᵢₙᵥ) .+ eps()
 InverseSolver = DirectXUA{2,0,1}
 
 # Script booleans
-@show boolFromRealDisp = false
+@show boolFromRealDisp = true
 
 @show boolIntegrateBuoys = false
 @show boolIntegrateSoil = false
 
-@show boolUdofOnTop = false
-@show boolUdofOnAnchor = false
-@show boolUdofOnLine = false
+@show boolUdofOnTop = true
+@show boolUdofOnAnchor = true
+@show boolUdofOnLine = true
 
-@show boolXcostOnTop = false
-@show boolXcostOnAnchor = false
+@show boolXcostOnTop = true
+@show boolXcostOnAnchor = true
 
-@show boolXconstrOnTop = true
-@show boolXconstrOnAnchor = true
+@show boolXconstrOnTop = false
+@show boolXconstrOnAnchor = false
 
-@show boolStrainCost = false
+@show boolStrainCost = true
 
 
 # Loss functions
@@ -80,7 +80,7 @@ if boolFromRealDisp
     y_disp_interp = yMotion1 
     z_disp_interp = zMotion1 
 else
-    max_disp = -0.01
+    max_disp = -10.
     # x_disp = max_disp * sin.(4π * inverseLoadSteps ./ inverseLoadSteps[end])
     x_disp = max_disp * inverseLoadSteps ./ inverseLoadSteps[end]
     x_disp_interp = linear_interpolation(vcat(-10., inverseLoadSteps), vcat(0., x_disp .* attenuationFactor))
@@ -370,12 +370,45 @@ end
 @show Λscale = 1e0 # The bigger the more Importance given to Residual over Costs, so the more importance given to Physical Model on Data Model 
 setscale!(model_inv; scale = scale, Λscale = Λscale)
 
-# Solve
+# Solve static
 initialstate_inv = initialize!(model_inv)
 staticStates_inv = solve(SweepX{0}; initialstate=initialstate_inv, time=staticLoadSteps, verbose=false, maxΔx=1e-6, maxiter=60)
 
-stateXUA = solve(InverseSolver;
+# Solve X
+stateX = solve(DirectXUA{0,0,0};
     initialstate=[staticStates_inv[end]],
+    time=[eps():eps():eps()*2],
+    verbose=true,
+    maxiter=20,
+    maxΔx=1e-5,   # More relaxed convergence (was 1e-3, keep for now)
+    maxΔu=Inf,
+    maxΔa=1e-5,   # REDUCED from 1e-3 to focus on A convergence
+    maxΔλ=Inf,
+    saveiter=true,
+)
+laststepX = findlastassigned(stateX)
+intermediateState = stateX[laststepX][1][end]
+
+# Solve XU
+stateXU = solve(DirectXUA{2,0,0};
+    initialstate=[intermediateState],
+    time=[inverseLoadSteps],
+    verbose=true,
+    maxiter=20,
+    maxΔx=1e-5,   # More relaxed convergence (was 1e-3, keep for now)
+    maxΔu=Inf,
+    maxΔa=1e-5,   # REDUCED from 1e-3 to focus on A convergence
+    maxΔλ=Inf,
+    saveiter=true,
+)
+laststepXU = findlastassigned(stateXU)
+intermediateState = stateXU[laststepXU][1][end]
+initialtrajectory = stateXU[laststepXU][1]
+
+# Solve XUA
+stateXUA = solve(InverseSolver;
+    initialstate=[intermediateState],
+    initialtrajectory = [initialtrajectory],
     time=[inverseLoadSteps],
     verbose=true,
     maxiter=20,
