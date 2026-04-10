@@ -7,8 +7,8 @@ include("BiasedStrainGaugeOnBarElement.jl")
 
 # Some physical constants
 #------------------------------------------ 
-const g=9.81
-const ρ=1025.
+g=9.81
+ρ=1025.
 
 # Parameters inverse analysis
 #------------------------------------------
