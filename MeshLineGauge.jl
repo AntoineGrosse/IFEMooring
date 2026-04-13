@@ -25,7 +25,7 @@ function MeshLineGauge(model,rawNode,azimuth,eltype,elgaugetype,xSection,segLeng
     # Populate lists for Segment 1
     nodid       = addnode!(model,nodeCoord[1][2:end,:])
     mesh        = hcat(nodid[1:nnodes[1]-2],nodid[2:nnodes[1]-1])
-    elementList = addelement!(model,elgaugetype,[topNode.ID,nodid[1],aNode];  P=SMatrix{3,1}(0.,.5,0.),D=SMatrix{3,1}(1.,0.,0.), elementkwargs=(mat=xSection[1],))
+    elementList = addelement!(model,elgaugetype,[topNode.ID,nodid[1],aNode];  P=SMatrix{3,1}(0.,.5,0.),D=SMatrix{3,1}(1.,0.,0.), ElementType = eltype, elementkwargs=(mat=xSection[1],))
     elementList = vcat(elementList,addelement!(model,eltype,mesh;       mat=xSection[1]))
     firstNode[1] = topNode.ID
     lastNode[1]  = nodid[size(nodid,1)]

@@ -1,6 +1,7 @@
 using Muscade, StaticArrays, GLMakie, Muscade.Toolbox, Interpolations, LinearAlgebra, CSV, DataFrames
-include("BiasedStrainGaugeOnBarElement.jl")
+include("BiasedStrainGauge.jl")
 include("MeshLineGauge.jl")
+include("ChainLink.jl")
 currentDir = @__DIR__
 cd(currentDir)
 
@@ -63,7 +64,7 @@ scale = (
         uat3 = 1e6
     ),
 )
-@show Λscale = 1e1 # The bigger the more Importance given to Residual over Costs, so the more importance given to Physical Model on Data Model 
+@show Λscale = 1e0 # The bigger the more Importance given to Residual over Costs, so the more importance given to Physical Model on Data Model 
 
 # Script booleans
 @show boolFromRealDisp = true
@@ -149,7 +150,7 @@ for (iterContinuation, attenuationFactor) in enumerate(attenuationFactors)
     x1_Cqₙ      =   2.6 *   0.5 * ρ * x1_Dh         # Normal drag coefficients [N/m/(m/s)^2]
     x1_Clₙ      =   0.0 *   0.5 * ρ * x1_Dh
     x1_Clₜ      =   0.0 *   0.5 * ρ * x1_Dh
-    x1_mat         = AxisymmetricBarCrossSection(EA=x1_EA, μ=x1_μ, w=x1_w, Caₜ=x1_Caₜ, Clₜ=x1_Clₜ, Cqₜ=x1_Cqₜ, Caₙ=x1_Caₙ, Clₙ=x1_Clₙ, Cqₙ=x1_Cqₙ)
+    x1_mat         = AxisymmetricChainLinkCrossSection(EA=x1_EA, μ=x1_μ, w=x1_w, Caₜ=x1_Caₜ, Clₜ=x1_Clₜ, Cqₜ=x1_Cqₜ, Caₙ=x1_Caₙ, Clₙ=x1_Clₙ, Cqₙ=x1_Cqₙ)
 
     # Define parameters for cross-section 2 (250mm polyester)
     x2_D        = 0.25                               # Outer diameter [m]
@@ -165,7 +166,7 @@ for (iterContinuation, attenuationFactor) in enumerate(attenuationFactors)
     x2_Cqₙ      =   1.6 *   0.5 * ρ * x2_Dh
     x2_Clₙ      =   0.0 *   0.5 * ρ * x2_Dh
     x2_Clₜ      =   0.0 *   0.5 * ρ * x2_Dh
-    x2_mat         = AxisymmetricBarCrossSection(EA=x2_EA, μ=x2_μ, w=x2_w, Caₜ=x2_Caₜ, Clₜ=x2_Clₜ, Cqₜ=x2_Cqₜ, Caₙ=x2_Caₙ, Clₙ=x2_Clₙ, Cqₙ=x2_Cqₙ)
+    x2_mat         = AxisymmetricChainLinkCrossSection(EA=x2_EA, μ=x2_μ, w=x2_w, Caₜ=x2_Caₜ, Clₜ=x2_Clₜ, Cqₜ=x2_Cqₜ, Caₙ=x2_Caₙ, Clₙ=x2_Clₙ, Cqₙ=x2_Cqₙ)
 
     # Segments
     nel = [5, 23, 12, 7]
@@ -186,7 +187,7 @@ for (iterContinuation, attenuationFactor) in enumerate(attenuationFactors)
 
     model = Model(:testline)
     topNode = addnode!(model, [0., 0., -fairleadDepth])
-    nodeList, elementList, anodeList = MeshLineGauge(model, topNode, 0., Bar3D, StrainGaugeOnBar3D, xSection, segLength, nel)
+    nodeList, elementList, anodeList = MeshLineGauge(model, topNode, 0., ChainLink, BiasedStrainGauge, xSection, segLength, nel)
 
     # X Constraints : Anchor
     @functor with(offsetHorizontal, prestrechStaticAnalysis)    xMotionBottom(x,t) = Cc1 * (x[1] - (prestrechStaticAnalysis + (min(t,-5.)+10)/5 * (offsetHorizontal - prestrechStaticAnalysis)))
@@ -266,7 +267,7 @@ for (iterContinuation, attenuationFactor) in enumerate(attenuationFactors)
 
     model_inv = Model(:testline)
     topNode_inv = addnode!(model_inv, [0., 0., -fairleadDepth])
-    nodeList_inv, elementList_inv, anodeList_inv = MeshLineGauge(model_inv, topNode_inv, 0., Bar3D, StrainGaugeOnBar3D, xSection, segLength, nel)
+    nodeList_inv, elementList_inv, anodeList_inv = MeshLineGauge(model_inv, topNode_inv, 0., ChainLink, BiasedStrainGauge, xSection, segLength, nel)
 
     # Constraints (same as forward)
     # X Constraints : Anchor
@@ -309,7 +310,7 @@ for (iterContinuation, attenuationFactor) in enumerate(attenuationFactors)
         # Compute tangent vector from displacements in global coordinates
         tg = elebar.tgₘ + uᵧ₂ - uᵧ₁
         L = √(tg[1]^2+tg[2]^2+tg[3]^2)
-        ε_val = L/elebar.Lₛ - 1
+        ε_val = max(eps(),L/elebar.Lₛ - 1)
         
         # Compute strain with full AD w.r.t. both A and X
         # A[2] is multiplier, A[1] is bias, both are variated by solver

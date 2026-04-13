@@ -1,6 +1,7 @@
 using Muscade, StaticArrays, GLMakie, Muscade.Toolbox, Interpolations, LinearAlgebra, CSV, DataFrames
-include("BiasedStrainGaugeOnBarElement.jl")
+include("BiasedStrainGauge.jl")
 include("MeshLineGauge.jl")
+include("ChainLink.jl")
 currentDir = @__DIR__
 cd(currentDir)
 
@@ -109,7 +110,7 @@ x1_Cqₜ      =   0.5 *   0.5 * ρ * x1_Dh          # Transverse drag coefficien
 x1_Cqₙ      =   2.6 *   0.5 * ρ * x1_Dh         # Normal drag coefficients [N/m/(m/s)^2]
 x1_Clₙ      =   0.0 *   0.5 * ρ * x1_Dh
 x1_Clₜ      =   0.0 *   0.5 * ρ * x1_Dh
-x1_mat         = AxisymmetricBarCrossSection(EA=x1_EA, μ=x1_μ, w=x1_w, Caₜ=x1_Caₜ, Clₜ=x1_Clₜ, Cqₜ=x1_Cqₜ, Caₙ=x1_Caₙ, Clₙ=x1_Clₙ, Cqₙ=x1_Cqₙ)
+x1_mat         = AxisymmetricChainLinkCrossSection(EA=x1_EA, μ=x1_μ, w=x1_w, Caₜ=x1_Caₜ, Clₜ=x1_Clₜ, Cqₜ=x1_Cqₜ, Caₙ=x1_Caₙ, Clₙ=x1_Clₙ, Cqₙ=x1_Cqₙ)
 
 # Define parameters for cross-section 2 (250mm polyester)
 x2_D        = 0.25                               # Outer diameter [m]
@@ -125,7 +126,7 @@ x2_Cqₜ      =   0.0 *   0.5 * ρ * x2_Dh          # Transverse drag coefficien
 x2_Cqₙ      =   1.6 *   0.5 * ρ * x2_Dh
 x2_Clₙ      =   0.0 *   0.5 * ρ * x2_Dh
 x2_Clₜ      =   0.0 *   0.5 * ρ * x2_Dh
-x2_mat         = AxisymmetricBarCrossSection(EA=x2_EA, μ=x2_μ, w=x2_w, Caₜ=x2_Caₜ, Clₜ=x2_Clₜ, Cqₜ=x2_Cqₜ, Caₙ=x2_Caₙ, Clₙ=x2_Clₙ, Cqₙ=x2_Cqₙ)
+x2_mat         = AxisymmetricChainLinkCrossSection(EA=x2_EA, μ=x2_μ, w=x2_w, Caₜ=x2_Caₜ, Clₜ=x2_Clₜ, Cqₜ=x2_Cqₜ, Caₙ=x2_Caₙ, Clₙ=x2_Clₙ, Cqₙ=x2_Cqₙ)
 
 # Segments
 nel = [5, 23, 12, 7]
@@ -227,7 +228,7 @@ for (iterContinuation, attenuationFactor) in enumerate(attenuationFactors)
     for iline in 1:nlines
         local azimuth = azimuths[iline]
         topNodes[iline] = addnode!(model, topInitCoord[iline])
-        nodeLists[iline], elementLists[iline], anodeLists[iline] = MeshLineGauge(model, topNodes[iline], azimuth, Bar3D, StrainGaugeOnBar3D, xSection, segLength, nel)
+        nodeLists[iline], elementLists[iline], anodeLists[iline] = MeshLineGauge(model, topNodes[iline], azimuth,ChainLink, StrainGaugeOnBar3D, xSection, segLength, nel)
 
         # X Constraints : Anchor
         @functor with(offsetHorizontal, prestrechStaticAnalysis, azimuth)       xMotionBottom(x,t) = Cc1 * (x[1] - cos(azimuth) * (prestrechStaticAnalysis + (min(t,-5.)+10)/5 * (offsetHorizontal - prestrechStaticAnalysis)))
@@ -331,7 +332,7 @@ for (iterContinuation, attenuationFactor) in enumerate(attenuationFactors)
     for iline in 1:nlines
         local azimuth = azimuths[iline]
         topNodes_inv[iline] = addnode!(model_inv, topInitCoord[iline])
-        nodeLists_inv[iline], elementLists_inv[iline], anodeLists_inv[iline] = MeshLineGauge(model_inv, topNodes_inv[iline], azimuth, Bar3D, StrainGaugeOnBar3D, xSection, segLength, nel)
+        nodeLists_inv[iline], elementLists_inv[iline], anodeLists_inv[iline] = MeshLineGauge(model_inv, topNodes_inv[iline], azimuth,ChainLink, StrainGaugeOnBar3D, xSection, segLength, nel)
 
         # Constraints (same as forward)
         # X Constraints : Anchor
@@ -392,7 +393,7 @@ for (iterContinuation, attenuationFactor) in enumerate(attenuationFactors)
             # Compute tangent vector from displacements in global coordinates
             tg = elebar.tgₘ + uᵧ₂ - uᵧ₁
             L = √(tg[1]^2+tg[2]^2+tg[3]^2)
-            ε_val = L/elebar.Lₛ - 1
+            ε_val = max(eps(),L/elebar.Lₛ - 1)
             
             # Compute strain with full AD w.r.t. both A and X
             # A[2] is multiplier, A[1] is bias, both are variated by solver
