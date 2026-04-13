@@ -63,7 +63,7 @@ scale = (
         uat3 = 1e6
     ),
 )
-@show Λscale = 1e0 # The bigger the more Importance given to Residual over Costs, so the more importance given to Physical Model on Data Model 
+@show Λscale = 1e1 # The bigger the more Importance given to Residual over Costs, so the more importance given to Physical Model on Data Model 
 
 # Script booleans
 @show boolFromRealDisp = true
@@ -451,33 +451,33 @@ for (iterContinuation, attenuationFactor) in enumerate(attenuationFactors)
     else
         println("Did not converge")
     end
-end
-# Produce an animation
-fig_anim_inv   = Figure(size = (2000,1000))
-ax_inv = Axis3(fig_anim_inv[1,1],xgridvisible=false,ygridvisible=false,zgridvisible=false,aspect = (1,1,.3),title="Animation inverse reconstruction")
-xlims!(ax_inv,-1000,1000); ylims!(ax_inv,-1000,1000); zlims!(ax_inv,-waterDepth - 20,10)
-graphic = draw!(ax_inv,state[1])
-ax_inv.azimuth[]=-π/2+π/180*10;
-ax_inv.elevation[]=0+π/180*10;
-framerate = 20
-loadStepsIterator = 1:3:length(inverseLoadSteps)
-record(fig_anim_inv, "figs/animationInverse.mp4", loadStepsIterator;
-        framerate = framerate) do stateIdx
-        draw!(graphic,state[stateIdx])
-end
-
-# Produce an animation
-fig_rec_inv   = Figure(size = (2000,1000))
-ax_rec = Axis3(fig_rec_inv[1,1],xgridvisible=false,ygridvisible=false,zgridvisible=false,aspect = (1,1,.3),title="Animation inverse iteration")
-xlims!(ax_rec,-1000,1000); ylims!(ax_rec,-1000,1000); zlims!(ax_rec,-waterDepth - 20,10)
-graphic = draw!(ax_rec,stateXUA[1][1][end])
-ax_rec.azimuth[]=-π/2+π/180*10;
-ax_rec.elevation[]=0+π/180*10;
-framerate = 20
-loadStepsIterator = 1:1:laststep
-record(fig_rec_inv, "figs/reconstructionIterations.mp4", loadStepsIterator;
-        framerate = framerate) do stateIdx
-        draw!(graphic,stateXUA[stateIdx][1][end])
+    # Produce an animation
+    fig_anim_inv   = Figure(size = (2000,1000))
+    ax_inv = Axis3(fig_anim_inv[1,1],xgridvisible=false,ygridvisible=false,zgridvisible=false,aspect = (1,1,.3),title="Animation inverse reconstruction")
+    xlims!(ax_inv,-1000,1000); ylims!(ax_inv,-1000,1000); zlims!(ax_inv,-waterDepth - 20,10)
+    graphic = draw!(ax_inv,state[1])
+    ax_inv.azimuth[]=-π/2+π/180*10;
+    ax_inv.elevation[]=0+π/180*10;
+    framerate = 20
+    loadStepsIterator = 1:3:length(inverseLoadSteps)
+    record(fig_anim_inv, "figs/animationInverse.mp4", loadStepsIterator;
+            framerate = framerate) do stateIdx
+            draw!(graphic,state[stateIdx])
+    end
+    
+    # Produce an animation
+    fig_rec_inv   = Figure(size = (2000,1000))
+    ax_rec = Axis3(fig_rec_inv[1,1],xgridvisible=false,ygridvisible=false,zgridvisible=false,aspect = (1,1,.3),title="Animation inverse iteration")
+    xlims!(ax_rec,-1000,1000); ylims!(ax_rec,-1000,1000); zlims!(ax_rec,-waterDepth - 20,10)
+    graphic = draw!(ax_rec,stateXUA[1][1][end])
+    ax_rec.azimuth[]=-π/2+π/180*10;
+    ax_rec.elevation[]=0+π/180*10;
+    framerate = 20
+    loadStepsIterator = 1:1:laststep
+    record(fig_rec_inv, "figs/reconstructionIterations.mp4", loadStepsIterator;
+            framerate = framerate) do stateIdx
+            draw!(graphic,stateXUA[stateIdx][1][end])
+    end
 end
 
 # Muscade.study_scale(stateXUA[1][1][1]; SP = stateXUA[1][1][1].SP, verbose = true)
