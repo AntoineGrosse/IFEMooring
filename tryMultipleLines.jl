@@ -2,6 +2,7 @@ using Muscade, StaticArrays, GLMakie, Muscade.Toolbox, Interpolations, LinearAlg
 include("BiasedStrainGauge.jl")
 include("MeshLineGauge.jl")
 include("ChainLink.jl")
+include("PostProcessHelpers.jl")
 currentDir = @__DIR__
 cd(currentDir)
 
@@ -23,16 +24,16 @@ g = 9.81
 @show Cc1 = 1e6
 
 # Parameters
-attenuationFactors = [0.4, 0.7, 1.]
+attenuationFactors = [1.]
 static_bias = 0.0015 # Static bias to retrieve
-Δtᵢₙᵥ = 1
-nsteps = 2e2
+Δtᵢₙᵥ = 0.3
+nsteps = 2e3
 staticLoadSteps = (-10:0.1:0)
 inverseLoadSteps = (0:Δtᵢₙᵥ:(nsteps)*Δtᵢₙᵥ) .+ eps()
 InverseSolver = DirectXUA{2,0,1}
 
-# Scaling    @show 
-scale = (
+# Scaling    
+@show scale = (
     X=(
         t1=1, 
         t2=1, 
@@ -64,11 +65,18 @@ scale = (
         uat3 = 1e6
     ),
 )
+# @show scale = (
+#     X=(
+#         t1=1, 
+#         t2=1, 
+#         t3=1, 
+#     )
+# )
 @show Λscale = 1e0 # The bigger the more Importance given to Residual over Costs, so the more importance given to Physical Model on Data Model 
 
 # Script booleans
 @show boolIntegrateBuoys = true
-@show boolIntegrateSoil = false
+@show boolIntegrateSoil = true
 
 @show boolUdofOnTop = true
 @show boolUdofOnAnchor = true
@@ -82,6 +90,14 @@ scale = (
 
 @show boolStrainCost = true
 
+# Plot booleans
+boolPlotStatic = true
+boolAnimateForward = true
+boolAnimateInverse = true
+boolPlotAxialForces = false
+boolPlotUdofs = false
+boolPlotAdofs = false
+boolPlotComparisonSIMA = true
 
 # Loss functions
 δ = 1e-2 # For Huber loss
@@ -142,16 +158,19 @@ offsetDownwards = -waterDepth + fairleadDepth
 prestrechStaticAnalysis = sum(segLength) * 0.01
 
 initX1 = 58.75
-initY1 = 0
+initY1 = 0.
+initZ1 = 0.
 initX2 = -29.375
 initY2 = 50.879
+initZ2 = 0.
 initX3 = -29.375
 initY3 = -50.879
+initZ3 = 0.
 
 topInitCoord = [
-    [initX1,initY1,-fairleadDepth],
-    [initX2,initY2,-fairleadDepth],
-    [initX3,initY3,-fairleadDepth],
+    [initX1,initY1,initZ1],
+    [initX2,initY2,initZ2],
+    [initX3,initY3,initZ3],
 ]
 yaw0 = 0.
 azimuths = [
@@ -170,7 +189,9 @@ for (iterContinuation, attenuationFactor) in enumerate(attenuationFactors)
     #------------------------------------------
 
     file_path = "input\\test_wo.csv"
+    file_path_w = "input\\test_w.csv"
     df = CSV.read(file_path, DataFrame; delim=',')
+    df_w = CSV.read(file_path_w, DataFrame; delim=',')
     statX1 = df[:,"Xfairlead1 [m]"][1]
     statY1 = df[:,"Yfairlead1 [m]"][1]
     statZ1 = df[:,"Zfairlead1 [m]"][1]
@@ -228,7 +249,7 @@ for (iterContinuation, attenuationFactor) in enumerate(attenuationFactors)
     for iline in 1:nlines
         local azimuth = azimuths[iline]
         topNodes[iline] = addnode!(model, topInitCoord[iline])
-        nodeLists[iline], elementLists[iline], anodeLists[iline] = MeshLineGauge(model, topNodes[iline], azimuth,ChainLink, StrainGaugeOnBar3D, xSection, segLength, nel)
+        nodeLists[iline], elementLists[iline], anodeLists[iline] = MeshLineGauge(model, topNodes[iline], azimuth,ChainLink, BiasedStrainGauge, xSection, segLength, nel)
 
         # X Constraints : Anchor
         @functor with(offsetHorizontal, prestrechStaticAnalysis, azimuth)       xMotionBottom(x,t) = Cc1 * (x[1] - cos(azimuth) * (prestrechStaticAnalysis + (min(t,-5.)+10)/5 * (offsetHorizontal - prestrechStaticAnalysis)))
@@ -274,18 +295,11 @@ for (iterContinuation, attenuationFactor) in enumerate(attenuationFactors)
     initialstate = initialize!(model)
     staticStates = solve(SweepX{0}; initialstate, time=staticLoadSteps, verbose=false, maxΔx=1e-6, maxiter=60)
 
-    fig      = Figure(size = (1000,1000))
-    ax = Axis3(fig[1,1])
-    draw!(ax,initialstate)
-    display(fig)
-    # Plot the static analysis sequence
-    for stateIdx ∈ 1:length(staticLoadSteps)
-        draw!(ax,staticStates[stateIdx])
+    if boolPlotStatic
+        plotStaticStates("",length(staticLoadSteps), initialstate, staticStates, "figs/static.png")
     end
-    save("figs/static.png",fig)
-    display(fig)
 
-    stateForward = solve(SweepX{2}; initialstate=staticStates[end], time=inverseLoadSteps, maxΔx=1e-5, verbose=false, maxiter=100)
+    stateForward = solve(SweepX{2}; initialstate=staticStates[end], time=inverseLoadSteps, maxΔx=1e-6, verbose=false, maxiter=100)
    
     # Making artificial measurement data from forward solving
     measured_strain_list = Vector{}(undef,nlines)
@@ -296,18 +310,13 @@ for (iterContinuation, attenuationFactor) in enumerate(attenuationFactors)
         measured_strain_list[iline] = linear_interpolation(vcat(-10., inverseLoadSteps), vcat(0., strain .+ static_bias))
     end
 
-    # Forward animation
-    fig_anim   = Figure(size = (2000,1000))
-    ax_for = Axis3(fig_anim[1,1],xgridvisible=false,ygridvisible=false,zgridvisible=false,aspect = (1,1,.3),title="Animation Forward analysis")
-    xlims!(ax_for,-1000,1000); ylims!(ax_for,-1000,1000); zlims!(ax_for,-waterDepth - 20,10)
-    graphic = draw!(ax_for,stateForward[1])
-    ax_for.azimuth[]=-π/2+π/180*10;
-    ax_for.elevation[]=0+π/180*10;
-    framerate = 20
-    loadStepsIterator = 1:3:length(inverseLoadSteps)
-    record(fig_anim, "figs/animationForward.mp4", loadStepsIterator;
-    framerate = framerate) do stateIdx
-        draw!(graphic,stateForward[stateIdx])
+    if boolAnimateForward
+        animateStates("Animation Forward analysis", 1:3:length(inverseLoadSteps), 10., 10., waterDepth, stateForward, "figs/animationForward.mp4")
+    end
+
+    if boolPlotComparisonSIMA
+        Fgps = extractAxialForce(stateForward, [elementLists[iline][2] for iline in 1:nlines], length(inverseLoadSteps))
+        plotComparisonWithSIMA(prescribed_disp_interp, inverseLoadSteps, taper, Fgps, df, df_w, "test")
     end
 
     ##########################################
@@ -332,7 +341,7 @@ for (iterContinuation, attenuationFactor) in enumerate(attenuationFactors)
     for iline in 1:nlines
         local azimuth = azimuths[iline]
         topNodes_inv[iline] = addnode!(model_inv, topInitCoord[iline])
-        nodeLists_inv[iline], elementLists_inv[iline], anodeLists_inv[iline] = MeshLineGauge(model_inv, topNodes_inv[iline], azimuth,ChainLink, StrainGaugeOnBar3D, xSection, segLength, nel)
+        nodeLists_inv[iline], elementLists_inv[iline], anodeLists_inv[iline] = MeshLineGauge(model_inv, topNodes_inv[iline], azimuth,ChainLink, BiasedStrainGauge, xSection, segLength, nel)
 
         # Constraints (same as forward)
         # X Constraints : Anchor
@@ -521,41 +530,26 @@ for (iterContinuation, attenuationFactor) in enumerate(attenuationFactors)
         global state = stateXUA[laststep][1]
         staticdev = VALUE(state[end].A[1])
         dynamicdev = VALUE(state[end].A[2])
-        println("Converged: Static dev = $staticdev, True = $static_bias, Error = $(abs(staticdev - static_bias)/static_bias * 100)%")
-        println("Dynamic dev = $dynamicdev")
+        println("Converged: Static dev Line 1 = $staticdev, True = $static_bias, Error = $(abs(staticdev - static_bias)/static_bias * 100)%")
+        println("Dynamic dev Line 1 = $dynamicdev")
+        staticdev = VALUE(state[end].A[3])
+        dynamicdev = VALUE(state[end].A[4])
+        println("Converged: Static dev Line 2 = $staticdev, True = $static_bias, Error = $(abs(staticdev - static_bias)/static_bias * 100)%")
+        println("Dynamic dev Line 2 = $dynamicdev")
+        staticdev = VALUE(state[end].A[5])
+        dynamicdev = VALUE(state[end].A[6])
+        println("Converged: Static dev Line 3 = $staticdev, True = $static_bias, Error = $(abs(staticdev - static_bias)/static_bias * 100)%")
+        println("Dynamic dev Line 3 = $dynamicdev")
     else
         println("Did not converge")
-        
-
-    end
-    # Produce an animation
-    fig_anim_inv   = Figure(size = (2000,1000))
-    ax_inv = Axis3(fig_anim_inv[1,1],xgridvisible=false,ygridvisible=false,zgridvisible=false,aspect = (1,1,.3),title="Animation inverse reconstruction")
-    xlims!(ax_inv,-1000,1000); ylims!(ax_inv,-1000,1000); zlims!(ax_inv,-waterDepth - 20,10)
-    graphic = draw!(ax_inv,state[1])
-    ax_inv.azimuth[]=-π/2+π/180*10;
-    ax_inv.elevation[]=0+π/180*10;
-    framerate = 20
-    loadStepsIterator = 1:3:length(inverseLoadSteps)
-    record(fig_anim_inv, "figs/animationInverse.mp4", loadStepsIterator;
-            framerate = framerate) do stateIdx
-            draw!(graphic,state[stateIdx])
-    end
-    
-    # Produce an animation
-    fig_rec_inv   = Figure(size = (2000,1000))
-    ax_rec = Axis3(fig_rec_inv[1,1],xgridvisible=false,ygridvisible=false,zgridvisible=false,aspect = (1,1,.3),title="Animation inverse iteration")
-    xlims!(ax_rec,-1000,1000); ylims!(ax_rec,-1000,1000); zlims!(ax_rec,-waterDepth - 20,10)
-    graphic = draw!(ax_rec,stateXUA[1][1][end])
-    ax_rec.azimuth[]=-π/2+π/180*10;
-    ax_rec.elevation[]=0+π/180*10;
-    framerate = 20
-    loadStepsIterator = 1:1:laststep
-    record(fig_rec_inv, "figs/reconstructionIterations.mp4", loadStepsIterator;
-            framerate = framerate) do stateIdx
-            draw!(graphic,stateXUA[stateIdx][1][end])
     end
 
+    if boolAnimateInverse
+
+        animateStates("Animation inverse reconstruction", 1:3:length(inverseLoadSteps), 10., 10., waterDepth, state, "figs/animationInverse.mp4")
+        states_reconstruction = [stateXUA[i][1][end] for i in 1:laststep]
+        animateStates("Animation inverse iterations", 1:1:laststep, 10., 10., waterDepth, states_reconstruction, "figs/reconstructionIterations.mp4")
+    end
 end
 
 # Muscade.study_scale(stateXUA[1][1][1]; SP = stateXUA[1][1][1].SP, verbose = true)

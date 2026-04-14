@@ -2,6 +2,7 @@ using Muscade, StaticArrays, GLMakie, Muscade.Toolbox, Interpolations, LinearAlg
 include("BiasedStrainGauge.jl")
 include("MeshLineGauge.jl")
 include("ChainLink.jl")
+include("PostProcessHelpers.jl")
 currentDir = @__DIR__
 cd(currentDir)
 
@@ -23,7 +24,8 @@ g = 9.81
 @show Cc1 = 1e6
 
 # Parameters
-attenuationFactors = [0.4, 0.7, 1.]
+attenuationFactors = [0.1]
+# attenuationFactors = [0.4, 0.7, 1.]
 static_bias = 0.0015 # Static bias to retrieve
 Δtᵢₙᵥ = 1.
 nsteps = 2e2
@@ -83,6 +85,14 @@ scale = (
 @show boolXconstrOnAnchor = false
 
 @show boolStrainCost = true
+
+# Plot booleans
+boolPlotStatic = false
+boolAnimateForward = false
+boolAnimateInverse = false
+boolPlotAxialForces = false
+boolPlotUdofs = false
+boolPlotAdofs = false
 
 
 # Loss functions
@@ -238,18 +248,20 @@ for (iterContinuation, attenuationFactor) in enumerate(attenuationFactors)
     strain = [out[idxEl].εₐₓ for idxEl in axes(out,2)]
     measured_strain_interp = linear_interpolation(vcat(-10., inverseLoadSteps), vcat(0., strain .+ static_bias))
 
-    # Forward animation
-    fig_anim   = Figure(size = (2000,1000))
-    ax_for = Axis3(fig_anim[1,1],xgridvisible=false,ygridvisible=false,zgridvisible=false,aspect = (1,1,.3),title="Animation Forward analysis")
-    xlims!(ax_for,-1000,1000); ylims!(ax_for,-1000,1000); zlims!(ax_for,-waterDepth - 20,10)
-    graphic = draw!(ax_for,stateForward[1])
-    ax_for.azimuth[]=-π/2+π/180*10;
-    ax_for.elevation[]=0+π/180*10;
-    framerate = 20
-    loadStepsIterator = 1:3:length(inverseLoadSteps)
-    record(fig_anim, "figs/animationForward.mp4", loadStepsIterator;
-    framerate = framerate) do stateIdx
-        draw!(graphic,stateForward[stateIdx])
+    if boolAnimateForward
+        # Forward animation
+        fig_anim   = Figure(size = (2000,1000))
+        ax_for = Axis3(fig_anim[1,1],xgridvisible=false,ygridvisible=false,zgridvisible=false,aspect = (1,1,.3),title="Animation Forward analysis")
+        xlims!(ax_for,-1000,1000); ylims!(ax_for,-1000,1000); zlims!(ax_for,-waterDepth - 20,10)
+        graphic = draw!(ax_for,stateForward[1])
+        ax_for.azimuth[]=-π/2+π/180*10;
+        ax_for.elevation[]=0+π/180*10;
+        framerate = 20
+        loadStepsIterator = 1:3:length(inverseLoadSteps)
+        record(fig_anim, "figs/animationForward.mp4", loadStepsIterator;
+        framerate = framerate) do stateIdx
+            draw!(graphic,stateForward[stateIdx])
+        end
     end
 
     ##########################################
@@ -452,32 +464,35 @@ for (iterContinuation, attenuationFactor) in enumerate(attenuationFactors)
     else
         println("Did not converge")
     end
-    # Produce an animation
-    fig_anim_inv   = Figure(size = (2000,1000))
-    ax_inv = Axis3(fig_anim_inv[1,1],xgridvisible=false,ygridvisible=false,zgridvisible=false,aspect = (1,1,.3),title="Animation inverse reconstruction")
-    xlims!(ax_inv,-1000,1000); ylims!(ax_inv,-1000,1000); zlims!(ax_inv,-waterDepth - 20,10)
-    graphic = draw!(ax_inv,state[1])
-    ax_inv.azimuth[]=-π/2+π/180*10;
-    ax_inv.elevation[]=0+π/180*10;
-    framerate = 20
-    loadStepsIterator = 1:3:length(inverseLoadSteps)
-    record(fig_anim_inv, "figs/animationInverse.mp4", loadStepsIterator;
-            framerate = framerate) do stateIdx
-            draw!(graphic,state[stateIdx])
-    end
-    
-    # Produce an animation
-    fig_rec_inv   = Figure(size = (2000,1000))
-    ax_rec = Axis3(fig_rec_inv[1,1],xgridvisible=false,ygridvisible=false,zgridvisible=false,aspect = (1,1,.3),title="Animation inverse iteration")
-    xlims!(ax_rec,-1000,1000); ylims!(ax_rec,-1000,1000); zlims!(ax_rec,-waterDepth - 20,10)
-    graphic = draw!(ax_rec,stateXUA[1][1][end])
-    ax_rec.azimuth[]=-π/2+π/180*10;
-    ax_rec.elevation[]=0+π/180*10;
-    framerate = 20
-    loadStepsIterator = 1:1:laststep
-    record(fig_rec_inv, "figs/reconstructionIterations.mp4", loadStepsIterator;
-            framerate = framerate) do stateIdx
-            draw!(graphic,stateXUA[stateIdx][1][end])
+
+    if boolAnimateInverse
+        # Produce an animation
+        fig_anim_inv   = Figure(size = (2000,1000))
+        ax_inv = Axis3(fig_anim_inv[1,1],xgridvisible=false,ygridvisible=false,zgridvisible=false,aspect = (1,1,.3),title="Animation inverse reconstruction")
+        xlims!(ax_inv,-1000,1000); ylims!(ax_inv,-1000,1000); zlims!(ax_inv,-waterDepth - 20,10)
+        graphic = draw!(ax_inv,state[1])
+        ax_inv.azimuth[]=-π/2+π/180*10;
+        ax_inv.elevation[]=0+π/180*10;
+        framerate = 20
+        loadStepsIterator = 1:3:length(inverseLoadSteps)
+        record(fig_anim_inv, "figs/animationInverse.mp4", loadStepsIterator;
+                framerate = framerate) do stateIdx
+                draw!(graphic,state[stateIdx])
+        end
+        
+        # Produce an animation
+        fig_rec_inv   = Figure(size = (2000,1000))
+        ax_rec = Axis3(fig_rec_inv[1,1],xgridvisible=false,ygridvisible=false,zgridvisible=false,aspect = (1,1,.3),title="Animation inverse iteration")
+        xlims!(ax_rec,-1000,1000); ylims!(ax_rec,-1000,1000); zlims!(ax_rec,-waterDepth - 20,10)
+        graphic = draw!(ax_rec,stateXUA[1][1][end])
+        ax_rec.azimuth[]=-π/2+π/180*10;
+        ax_rec.elevation[]=0+π/180*10;
+        framerate = 20
+        loadStepsIterator = 1:1:laststep
+        record(fig_rec_inv, "figs/reconstructionIterations.mp4", loadStepsIterator;
+                framerate = framerate) do stateIdx
+                draw!(graphic,stateXUA[stateIdx][1][end])
+        end
     end
 end
 
