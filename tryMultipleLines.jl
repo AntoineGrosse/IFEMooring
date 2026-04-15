@@ -26,8 +26,8 @@ g = 9.81
 # Parameters
 attenuationFactors = [1.]
 static_bias = 0.0015 # Static bias to retrieve
-Δtᵢₙᵥ = 0.3
-nsteps = 2e3
+Δtᵢₙᵥ = 1
+nsteps = 2e2
 staticLoadSteps = (-10:0.1:0)
 inverseLoadSteps = (0:Δtᵢₙᵥ:(nsteps)*Δtᵢₙᵥ) .+ eps()
 InverseSolver = DirectXUA{2,0,1}
@@ -65,18 +65,11 @@ InverseSolver = DirectXUA{2,0,1}
         uat3 = 1e6
     ),
 )
-# @show scale = (
-#     X=(
-#         t1=1, 
-#         t2=1, 
-#         t3=1, 
-#     )
-# )
 @show Λscale = 1e0 # The bigger the more Importance given to Residual over Costs, so the more importance given to Physical Model on Data Model 
 
 # Script booleans
 @show boolIntegrateBuoys = true
-@show boolIntegrateSoil = true
+@show boolIntegrateSoil = false
 
 @show boolUdofOnTop = true
 @show boolUdofOnAnchor = true
@@ -91,13 +84,12 @@ InverseSolver = DirectXUA{2,0,1}
 @show boolStrainCost = true
 
 # Plot booleans
-boolPlotStatic = true
-boolAnimateForward = true
+boolPlotStatic = false
+boolAnimateForward = false
 boolAnimateInverse = true
-boolPlotAxialForces = false
 boolPlotUdofs = false
 boolPlotAdofs = false
-boolPlotComparisonSIMA = true
+boolPlotComparisonSIMA = false
 
 # Loss functions
 δ = 1e-2 # For Huber loss
@@ -159,13 +151,13 @@ prestrechStaticAnalysis = sum(segLength) * 0.01
 
 initX1 = 58.75
 initY1 = 0.
-initZ1 = 0.
+initZ1 = -fairleadDepth
 initX2 = -29.375
 initY2 = 50.879
-initZ2 = 0.
+initZ2 = -fairleadDepth
 initX3 = -29.375
 initY3 = -50.879
-initZ3 = 0.
+initZ3 = -fairleadDepth
 
 topInitCoord = [
     [initX1,initY1,initZ1],
@@ -182,7 +174,6 @@ azimuths = [
 # Iterative continuation loop
 #------------------------------------------
 for (iterContinuation, attenuationFactor) in enumerate(attenuationFactors)
-
     println("\n======= Continuation iteration number $(iterContinuation)/$(length(attenuationFactors)) with factor $(attenuationFactor) =======")
 
     # Prescribed displacements
@@ -192,15 +183,15 @@ for (iterContinuation, attenuationFactor) in enumerate(attenuationFactors)
     file_path_w = "input\\test_w.csv"
     df = CSV.read(file_path, DataFrame; delim=',')
     df_w = CSV.read(file_path_w, DataFrame; delim=',')
-    statX1 = df[:,"Xfairlead1 [m]"][1]
-    statY1 = df[:,"Yfairlead1 [m]"][1]
-    statZ1 = df[:,"Zfairlead1 [m]"][1]
-    statX2 = df[:,"Xfairlead2 [m]"][1]
-    statY2 = df[:,"Yfairlead2 [m]"][1]
-    statZ2 = df[:,"Zfairlead2 [m]"][1]
-    statX3 = df[:,"Xfairlead3 [m]"][1]
-    statY3 = df[:,"Yfairlead3 [m]"][1]
-    statZ3 = df[:,"Zfairlead3 [m]"][1]
+    @show statX1 = df[:,"Xfairlead1 [m]"][1]
+    @show statY1 = df[:,"Yfairlead1 [m]"][1]
+    @show statZ1 = df[:,"Zfairlead1 [m]"][1]
+    @show statX2 = df[:,"Xfairlead2 [m]"][1]
+    @show statY2 = df[:,"Yfairlead2 [m]"][1]
+    @show statZ2 = df[:,"Zfairlead2 [m]"][1]
+    @show statX3 = df[:,"Xfairlead3 [m]"][1]
+    @show statY3 = df[:,"Yfairlead3 [m]"][1]
+    @show statZ3 = df[:,"Zfairlead3 [m]"][1]
     nSamples = length(df[:,"time"]);
     ratioSampleTaper = 0.02
     taper = floor(Int,ratioSampleTaper*nSamples)
@@ -214,7 +205,7 @@ for (iterContinuation, attenuationFactor) in enumerate(attenuationFactors)
     xMotion3 = linear_interpolation(vcat(df[1,"time"]-10.,df[:,"time"],df[end,"time"]+10.),vcat(0.,(df[:,"Xfairlead3 [m]"].- statX3).*ramp .* attenuationFactor,0.))
     yMotion3 = linear_interpolation(vcat(df[1,"time"]-10.,df[:,"time"],df[end,"time"]+10.),vcat(0.,(df[:,"Yfairlead3 [m]"].- statY3).*ramp .* attenuationFactor,0.))
     zMotion3 = linear_interpolation(vcat(df[1,"time"]-10.,df[:,"time"],df[end,"time"]+10.),vcat(0.,(df[:,"Zfairlead3 [m]"].- statZ3).*ramp .* attenuationFactor,0.))
-    
+
     prescribed_disp_interp = [
         [
             xMotion1,
@@ -232,7 +223,7 @@ for (iterContinuation, attenuationFactor) in enumerate(attenuationFactors)
             zMotion3,
         ],
     ]
-    
+
 
     ##########################################
     ## Forward
@@ -247,27 +238,20 @@ for (iterContinuation, attenuationFactor) in enumerate(attenuationFactors)
 
     model = Model(:testline)
     for iline in 1:nlines
-        local azimuth = azimuths[iline]
-        topNodes[iline] = addnode!(model, topInitCoord[iline])
-        nodeLists[iline], elementLists[iline], anodeLists[iline] = MeshLineGauge(model, topNodes[iline], azimuth,ChainLink, BiasedStrainGauge, xSection, segLength, nel)
+        local_azimuth = azimuths[iline]
+        # Line
+        coordTopNode = topInitCoord[iline]
+        topNodes[iline] = addnode!(model,coordTopNode)
+        nodeLists[iline],elementLists[iline],anodeLists[iline] = MeshLineGauge(model, topNodes[iline], local_azimuth, ChainLink, BiasedStrainGauge,xSection,segLength,nel)
 
         # X Constraints : Anchor
-        @functor with(offsetHorizontal, prestrechStaticAnalysis, azimuth)       xMotionBottom(x,t) = Cc1 * (x[1] - cos(azimuth) * (prestrechStaticAnalysis + (min(t,-5.)+10)/5 * (offsetHorizontal - prestrechStaticAnalysis)))
-        @functor with(offsetHorizontal, prestrechStaticAnalysis, azimuth)       yMotionBottom(x,t) = Cc1 * (x[1] - sin(azimuth) * (prestrechStaticAnalysis + (min(t,-5.)+10)/5 * (offsetHorizontal - prestrechStaticAnalysis)))
-        @functor with(offsetDownwards)                                          zMotionBottom(x,t) = Cc1 * (x[1] - ((min(t,-5.)+10)/5 * offsetDownwards))
-        addelement!(model, DofConstraint, [nodeLists[iline][nseg][end]], xinod=(1,), xfield=(:t1,), λinod=1, λclass=:X, λfield=:λat1, gap=xMotionBottom, mode=equal)
-        addelement!(model, DofConstraint, [nodeLists[iline][nseg][end]], xinod=(1,), xfield=(:t2,), λinod=1, λclass=:X, λfield=:λat2, gap=yMotionBottom, mode=equal)
-        addelement!(model, DofConstraint, [nodeLists[iline][nseg][end]], xinod=(1,), xfield=(:t3,), λinod=1, λclass=:X, λfield=:λat3, gap=zMotionBottom, mode=equal)
-
-        # X Constraints : Top
-        x_disp_interp,y_disp_interp,z_disp_interp = prescribed_disp_interp[iline]
-        @functor with() xMotionTop(x,t) = Cc1 * (x[1] - x_disp_interp(t))
-        @functor with() yMotionTop(x,t) = Cc1 * (x[1] - y_disp_interp(t))
-        @functor with() zMotionTop(x,t) = Cc1 * (x[1] - z_disp_interp(t))
-        addelement!(model, DofConstraint, [topNodes[iline]], xinod=(1,), xfield=(:t1,), λinod=1, λclass=:X, λfield=:λpt1, gap=xMotionTop, mode=equal)
-        addelement!(model, DofConstraint, [topNodes[iline]], xinod=(1,), xfield=(:t2,), λinod=1, λclass=:X, λfield=:λpt2, gap=yMotionTop, mode=equal)
-        addelement!(model, DofConstraint, [topNodes[iline]], xinod=(1,), xfield=(:t3,), λinod=1, λclass=:X, λfield=:λpt3, gap=zMotionTop, mode=equal)
-
+        @functor with(offsetHorizontal,local_azimuth,prestrechStaticAnalysis)   xMotionBottom(x,t)= Cc1 * (x[1] - cos(local_azimuth)*  (prestrechStaticAnalysis +  (min(t,-5.)+10)/5*( offsetHorizontal  - prestrechStaticAnalysis )))
+        @functor with(offsetHorizontal,local_azimuth,prestrechStaticAnalysis)   yMotionBottom(x,t)= Cc1 * (x[1] - sin(local_azimuth)*  (prestrechStaticAnalysis +  (min(t,-5.)+10)/5*( offsetHorizontal  - prestrechStaticAnalysis )))
+        @functor with(offsetDownwards)                                          zMotionBottom(x,t)= Cc1 * (x[1] -                      (                           (min(t,-5.)+10)/5*( offsetDownwards                             )))
+        addelement!(model,DofConstraint,[nodeLists[iline][nseg][end]],xinod=(1,),xfield=(:t1,), λinod=1, λclass=:X, λfield=:λat1, gap=xMotionBottom, mode=equal)
+        addelement!(model,DofConstraint,[nodeLists[iline][nseg][end]],xinod=(1,),xfield=(:t2,), λinod=1, λclass=:X, λfield=:λat2, gap=yMotionBottom, mode=equal)
+        addelement!(model,DofConstraint,[nodeLists[iline][nseg][end]],xinod=(1,),xfield=(:t3,), λinod=1, λclass=:X, λfield=:λat3, gap=zMotionBottom, mode=equal);
+        
         # Buoys and Clampweights
         if boolIntegrateBuoys
             nodnum_buoygrav_topchain = 2
@@ -276,9 +260,9 @@ for (iterContinuation, attenuationFactor) in enumerate(attenuationFactors)
             @functor with() buoygravForce_topchain(t)       = ((min(t,-5.)+10)/5) * (-3 + 0. ) * 1e3 * g
             @functor with() buoygravForce_midpolyester(t)   = ((min(t,-5.)+10)/5) * (-3 + 10.) * 1e3 * g
             @functor with() buoygravForce_bottomchain(t)    = ((min(t,-5.)+10)/5) * (-3 + 15.) * 1e3 * g
-            addelement!(model, DofLoad, [nodeLists[iline][nodnum_buoygrav_topchain][1]], field=:t3, value=buoygravForce_topchain)
-            addelement!(model, DofLoad, [nodeLists[iline][nodnum_buoygrav_midpolyester][1]], field=:t3, value=buoygravForce_midpolyester)
-            addelement!(model, DofLoad, [nodeLists[iline][nodnum_buoygrav_bottomchain][1]], field=:t3, value=buoygravForce_bottomchain)
+            addelement!(model,DofLoad,[nodeLists[iline][nodnum_buoygrav_topchain][1]];field=:t3,value=buoygravForce_topchain);  
+            addelement!(model,DofLoad,[nodeLists[iline][nodnum_buoygrav_midpolyester][1]];field=:t3,value=buoygravForce_midpolyester);  
+            addelement!(model,DofLoad,[nodeLists[iline][nodnum_buoygrav_bottomchain][1]];field=:t3,value=buoygravForce_bottomchain);  
         end
 
         # Soil contact
@@ -286,9 +270,18 @@ for (iterContinuation, attenuationFactor) in enumerate(attenuationFactors)
             # local KvExponent = log(14/14000)/log(attenuationFactors[1])
             # local Kv = attenuationFactor^KvExponent * 14000.
             local Kv = 14000.
-            segnumsoil = nseg
-            [addelement!(model, SoilContact, [nodeLists[iline][segnumsoil][idxNod]], z₀=offsetDownwards, Kh=0.0, Kv=Kv, Ch=0., Cv=0.0) for idxNod in 1:length(nodeLists[iline][segnumsoil])]
+        segnumsoil = nseg
+        [addelement!(model,SoilContact,[nodeLists[iline][nodnumSoil][idxNod]],z₀=offsetDownwards,Kh=0.0,Kv=Kv,Ch=0.,Cv=0.0)  for idxNod = 1:length(nodeLists[iline][nodnumSoil])]
         end
+        
+        # X Constraints : Top
+        xMotion,yMotion,zMotion = prescribedTopMotion[iline]
+        @functor with(xMotion) xMotionTop(x,t)= Cc1 * (x[1] - xMotion(t))
+        @functor with(yMotion) yMotionTop(x,t)= Cc1 * (x[1] - yMotion(t))
+        @functor with(zMotion) zMotionTop(x,t)= Cc1 * (x[1] - zMotion(t))
+        addelement!(model,DofConstraint,[topNodes[iline]],xinod=(1,),xfield=(:t1,), λinod=1, λclass=:X, λfield=:λpt1, gap=xMotionTop, mode=equal)
+        addelement!(model,DofConstraint,[topNodes[iline]],xinod=(1,),xfield=(:t2,), λinod=1, λclass=:X, λfield=:λpt2, gap=yMotionTop, mode=equal)
+        addelement!(model,DofConstraint,[topNodes[iline]],xinod=(1,),xfield=(:t3,), λinod=1, λclass=:X, λfield=:λpt3, gap=zMotionTop, mode=equal);
     end
 
     # Forward solve
@@ -299,8 +292,15 @@ for (iterContinuation, attenuationFactor) in enumerate(attenuationFactors)
         plotStaticStates("",length(staticLoadSteps), initialstate, staticStates, "figs/static.png")
     end
 
-    stateForward = solve(SweepX{2}; initialstate=staticStates[end], time=inverseLoadSteps, maxΔx=1e-6, verbose=false, maxiter=100)
-   
+    stateForward = solve(SweepX{2};
+        initialstate=staticStates[end], 
+        time=inverseLoadSteps, 
+        maxΔx=1e-6, 
+        verbose=false, 
+        maxiter=100,
+        β=1/3.,γ=0.605, # Unconditionally stable for : γ >= .5 &&  2 β >= γ)
+    )
+
     # Making artificial measurement data from forward solving
     measured_strain_list = Vector{}(undef,nlines)
     for iline in 1:nlines
@@ -315,7 +315,7 @@ for (iterContinuation, attenuationFactor) in enumerate(attenuationFactors)
     end
 
     if boolPlotComparisonSIMA
-        Fgps = extractAxialForce(stateForward, [elementLists[iline][2] for iline in 1:nlines], length(inverseLoadSteps))
+        Fgps = extractAxialForceFromStrainGauge(stateForward, [elementLists[iline][1]  for iline in 1:nlines], length(inverseLoadSteps))
         plotComparisonWithSIMA(prescribed_disp_interp, inverseLoadSteps, taper, Fgps, df, df_w, "test")
     end
 
@@ -339,31 +339,22 @@ for (iterContinuation, attenuationFactor) in enumerate(attenuationFactors)
 
     model_inv = Model(:testline)
     for iline in 1:nlines
-        local azimuth = azimuths[iline]
-        topNodes_inv[iline] = addnode!(model_inv, topInitCoord[iline])
-        nodeLists_inv[iline], elementLists_inv[iline], anodeLists_inv[iline] = MeshLineGauge(model_inv, topNodes_inv[iline], azimuth,ChainLink, BiasedStrainGauge, xSection, segLength, nel)
+        local_azimuth = azimuths[iline]
+        # Line
+        coordTopNode = topInitCoord[iline]
+        topNodes_inv[iline] = addnode!(model_inv,coordTopNode)
+        nodeLists_inv[iline],elementLists_inv[iline],anodeLists_inv[iline] = MeshLineGauge(model_inv, topNodes_inv[iline], local_azimuth, ChainLink, BiasedStrainGauge,xSection,segLength,nel)
 
-        # Constraints (same as forward)
         # X Constraints : Anchor
         anchorConstr = boolXconstrOnAnchor ? :equal : :off
         @functor with() modeconstraintAnchor(t) = t < eps() ? :equal : anchorConstr
-        @functor with(offsetHorizontal, prestrechStaticAnalysis, azimuth)       xMotionBottom(x,t) = Cc1 * (x[1] - cos(azimuth) * (prestrechStaticAnalysis + (min(t,-5.)+10)/5 * (offsetHorizontal - prestrechStaticAnalysis)))
-        @functor with(offsetHorizontal, prestrechStaticAnalysis, azimuth)       yMotionBottom(x,t) = Cc1 * (x[1] - sin(azimuth) * (prestrechStaticAnalysis + (min(t,-5.)+10)/5 * (offsetHorizontal - prestrechStaticAnalysis)))
-        @functor with(offsetDownwards)                                          zMotionBottom(x,t) = Cc1 * (x[1] - ((min(t,-5.)+10)/5 * offsetDownwards))
-        addelement!(model_inv, DofConstraint, [nodeLists_inv[iline][nseg][end]], xinod=(1,), xfield=(:t1,), λinod=1, λclass=:X, λfield=:λat1, gap=xMotionBottom, mode=modeconstraintAnchor)
-        addelement!(model_inv, DofConstraint, [nodeLists_inv[iline][nseg][end]], xinod=(1,), xfield=(:t2,), λinod=1, λclass=:X, λfield=:λat2, gap=yMotionBottom, mode=modeconstraintAnchor)
-        addelement!(model_inv, DofConstraint, [nodeLists_inv[iline][nseg][end]], xinod=(1,), xfield=(:t3,), λinod=1, λclass=:X, λfield=:λat3, gap=zMotionBottom, mode=modeconstraintAnchor)
-        # X Constraints : Top
-        topConstr = boolXconstrOnTop ? :equal : :off
-        @functor with() modeconstraintTop(t) = t < eps() ? :equal : topConstr
-        x_disp_interp,y_disp_interp,z_disp_interp = prescribed_disp_interp[iline]
-        @functor with() xMotionTop(x,t) = Cc1 * (x[1] - x_disp_interp(t))
-        @functor with() yMotionTop(x,t) = Cc1 * (x[1] - y_disp_interp(t))
-        @functor with() zMotionTop(x,t) = Cc1 * (x[1] - z_disp_interp(t))
-        addelement!(model_inv, DofConstraint, [topNodes_inv[iline]], xinod=(1,), xfield=(:t1,), λinod=1, λclass=:X, λfield=:λpt1, gap=xMotionTop, mode=modeconstraintTop)
-        addelement!(model_inv, DofConstraint, [topNodes_inv[iline]], xinod=(1,), xfield=(:t2,), λinod=1, λclass=:X, λfield=:λpt2, gap=yMotionTop, mode=modeconstraintTop)
-        addelement!(model_inv, DofConstraint, [topNodes_inv[iline]], xinod=(1,), xfield=(:t3,), λinod=1, λclass=:X, λfield=:λpt3, gap=zMotionTop, mode=modeconstraintTop)
-
+        @functor with(offsetHorizontal,local_azimuth,prestrechStaticAnalysis)   xMotionBottom(x,t)= Cc1 * (x[1] - cos(local_azimuth)*  (prestrechStaticAnalysis +  (min(t,-5.)+10)/5*( offsetHorizontal  - prestrechStaticAnalysis )))
+        @functor with(offsetHorizontal,local_azimuth,prestrechStaticAnalysis)   yMotionBottom(x,t)= Cc1 * (x[1] - sin(local_azimuth)*  (prestrechStaticAnalysis +  (min(t,-5.)+10)/5*( offsetHorizontal  - prestrechStaticAnalysis )))
+        @functor with(offsetDownwards)                                          zMotionBottom(x,t)= Cc1 * (x[1] -                      (                           (min(t,-5.)+10)/5*( offsetDownwards                             )))
+        addelement!(model_inv,DofConstraint,[nodeLists_inv[iline][nseg][end]],xinod=(1,),xfield=(:t1,), λinod=1, λclass=:X, λfield=:λat1, gap=xMotionBottom, mode=modeconstraintAnchor)
+        addelement!(model_inv,DofConstraint,[nodeLists_inv[iline][nseg][end]],xinod=(1,),xfield=(:t2,), λinod=1, λclass=:X, λfield=:λat2, gap=yMotionBottom, mode=modeconstraintAnchor)
+        addelement!(model_inv,DofConstraint,[nodeLists_inv[iline][nseg][end]],xinod=(1,),xfield=(:t3,), λinod=1, λclass=:X, λfield=:λat3, gap=zMotionBottom, mode=modeconstraintAnchor);
+        
         # Buoys and Clampweights
         if boolIntegrateBuoys
             nodnum_buoygrav_topchain = 2
@@ -372,19 +363,30 @@ for (iterContinuation, attenuationFactor) in enumerate(attenuationFactors)
             @functor with() buoygravForce_topchain(t)       = ((min(t,-5.)+10)/5) * (-3 + 0. ) * 1e3 * g
             @functor with() buoygravForce_midpolyester(t)   = ((min(t,-5.)+10)/5) * (-3 + 10.) * 1e3 * g
             @functor with() buoygravForce_bottomchain(t)    = ((min(t,-5.)+10)/5) * (-3 + 15.) * 1e3 * g
-            addelement!(model_inv, DofLoad, [nodeLists_inv[iline][nodnum_buoygrav_topchain][1]], field=:t3, value=buoygravForce_topchain)
-            addelement!(model_inv, DofLoad, [nodeLists_inv[iline][nodnum_buoygrav_midpolyester][1]], field=:t3, value=buoygravForce_midpolyester)
-            addelement!(model_inv, DofLoad, [nodeLists_inv[iline][nodnum_buoygrav_bottomchain][1]], field=:t3, value=buoygravForce_bottomchain)
+            addelement!(model_inv,DofLoad,[nodeLists_inv[iline][nodnum_buoygrav_topchain][1]];field=:t3,value=buoygravForce_topchain);  
+            addelement!(model_inv,DofLoad,[nodeLists_inv[iline][nodnum_buoygrav_midpolyester][1]];field=:t3,value=buoygravForce_midpolyester);  
+            addelement!(model_inv,DofLoad,[nodeLists_inv[iline][nodnum_buoygrav_bottomchain][1]];field=:t3,value=buoygravForce_bottomchain);  
         end
 
-        # Soil
+        # Soil contact
         if boolIntegrateSoil
             # local KvExponent = log(14/14000)/log(attenuationFactors[1])
             # local Kv = attenuationFactor^KvExponent * 14000.
             local Kv = 14000.
-            segnumsoil = nseg
-            [addelement!(model_inv, SoilContact, [nodeLists_inv[iline][segnumsoil][idxNod]], z₀=offsetDownwards, Kh=0.0, Kv=Kv, Ch=0., Cv=0.0) for idxNod in 1:length(nodeLists_inv[iline][segnumsoil])]
+        segnumsoil = nseg
+        [addelement!(model_inv,SoilContact,[nodeLists_inv[iline][nodnumSoil][idxNod]],z₀=offsetDownwards,Kh=0.0,Kv=Kv,Ch=0.,Cv=0.0)  for idxNod = 1:length(nodeLists_inv[iline][nodnumSoil])]
         end
+        
+        # X Constraints : Top
+        xMotion,yMotion,zMotion = prescribedTopMotion[iline]
+        topConstr = boolXconstrOnTop ? :equal : :off
+        @functor with() modeconstraintTop(t) = t < eps() ? :equal : topConstr
+        @functor with(xMotion) xMotionTop(x,t)= Cc1 * (x[1] - xMotion(t))
+        @functor with(yMotion) yMotionTop(x,t)= Cc1 * (x[1] - yMotion(t))
+        @functor with(zMotion) zMotionTop(x,t)= Cc1 * (x[1] - zMotion(t))
+        addelement!(model_inv,DofConstraint,[topNodes_inv[iline]],xinod=(1,),xfield=(:t1,), λinod=1, λclass=:X, λfield=:λpt1, gap=xMotionTop, mode=modeconstraintTop)
+        addelement!(model_inv,DofConstraint,[topNodes_inv[iline]],xinod=(1,),xfield=(:t2,), λinod=1, λclass=:X, λfield=:λpt2, gap=yMotionTop, mode=modeconstraintTop)
+        addelement!(model_inv,DofConstraint,[topNodes_inv[iline]],xinod=(1,),xfield=(:t3,), λinod=1, λclass=:X, λfield=:λpt3, gap=zMotionTop, mode=modeconstraintTop);
 
         # Strain cost
         element1 = elementLists_inv[iline][1]
@@ -435,19 +437,19 @@ for (iterContinuation, attenuationFactor) in enumerate(attenuationFactors)
         end
         # Top motion (perfect) measurement X cost
         if boolXcostOnTop
-            x_disp_interp,y_disp_interp,z_disp_interp = prescribed_disp_interp[iline]
-            @functor with(x_disp_interp) xCostTop(x,t) = quadra(sqrt(Cx1) * (x - x_disp_interp(t)))
-            @functor with(y_disp_interp) yCostTop(x,t) = quadra(sqrt(Cx1) * (x - y_disp_interp(t)))
-            @functor with(z_disp_interp) zCostTop(x,t) = quadra(sqrt(Cx1) * (x - z_disp_interp(t)))
+            xMotion,yMotion,zMotion = prescribedTopMotion[iline]
+            @functor with(xMotion) xCostTop(x,t) = quadra(sqrt(Cx1) * (x - xMotion(t)))
+            @functor with(yMotion) yCostTop(x,t) = quadra(sqrt(Cx1) * (x - yMotion(t)))
+            @functor with(zMotion) zCostTop(x,t) = quadra(sqrt(Cx1) * (x - zMotion(t)))
             eXtopt1 = addelement!(model_inv, SingleDofCost, [nodeLists_inv[iline][1][1]]; class=:X,field=:t1,cost=xCostTop)
             eXtopt2 = addelement!(model_inv, SingleDofCost, [nodeLists_inv[iline][1][1]]; class=:X,field=:t2,cost=yCostTop)
             eXtopt3 = addelement!(model_inv, SingleDofCost, [nodeLists_inv[iline][1][1]]; class=:X,field=:t3,cost=zCostTop)
         end
         # Anchor motion (perfect) measurement X cost
         if boolXcostOnAnchor
-            @functor with(offsetHorizontal, prestrechStaticAnalysis, azimuth)   xCostAnch(x,t) = quadra(sqrt(Cx1) * (x - cos(azimuth) * (prestrechStaticAnalysis + (min(t,-5.)+10)/5 * (offsetHorizontal - prestrechStaticAnalysis))))
-            @functor with(offsetHorizontal, prestrechStaticAnalysis, azimuth)   yCostAnch(x,t) = quadra(sqrt(Cx1) * (x - sin(azimuth) * (prestrechStaticAnalysis + (min(t,-5.)+10)/5 * (offsetHorizontal - prestrechStaticAnalysis))))
-            @functor with(offsetDownwards)                                      zCostAnch(x,t) = quadra(sqrt(Cx1) * (x - ((min(t,-5.)+10)/5 * offsetDownwards)))
+            @functor with(offsetHorizontal, prestrechStaticAnalysis, local_azimuth)     xCostAnch(x,t) = quadra(sqrt(Cx1) * (x - cos(local_azimuth) *   (prestrechStaticAnalysis +  (min(t,-5.)+10)/5 * (offsetHorizontal - prestrechStaticAnalysis))))
+            @functor with(offsetHorizontal, prestrechStaticAnalysis, local_azimuth)     yCostAnch(x,t) = quadra(sqrt(Cx1) * (x - sin(local_azimuth) *   (prestrechStaticAnalysis +  (min(t,-5.)+10)/5 * (offsetHorizontal - prestrechStaticAnalysis))))
+            @functor with(offsetDownwards)                                              zCostAnch(x,t) = quadra(sqrt(Cx1) * (x -                        (                           (min(t,-5.)+10)/5 * offsetDownwards                             )))
             eXancht1 = addelement!(model_inv, SingleDofCost, [nodeLists_inv[iline][end][end]]; class=:X,field=:t1,cost=xCostAnch)
             eXancht2 = addelement!(model_inv, SingleDofCost, [nodeLists_inv[iline][end][end]]; class=:X,field=:t2,cost=yCostAnch)
             eXancht3 = addelement!(model_inv, SingleDofCost, [nodeLists_inv[iline][end][end]]; class=:X,field=:t3,cost=zCostAnch)
@@ -522,7 +524,7 @@ for (iterContinuation, attenuationFactor) in enumerate(attenuationFactors)
         maxΔu=Inf,
         maxΔa=1e-5,   # REDUCED from 1e-3 to focus on A convergence
         maxΔλ=Inf,
-        saveiter=true,
+        saveiter=true
     )
 
     global laststep = findlastassigned(stateXUA)
@@ -550,6 +552,9 @@ for (iterContinuation, attenuationFactor) in enumerate(attenuationFactors)
         states_reconstruction = [stateXUA[i][1][end] for i in 1:laststep]
         animateStates("Animation inverse iterations", 1:1:laststep, 10., 10., waterDepth, states_reconstruction, "figs/reconstructionIterations.mp4")
     end
+
+    Fgps = extractAxialForceFromStrainGauge(state, [elementLists_inv[iline][1]  for iline in 1:nlines], length(inverseLoadSteps))
+    plotComparisonWithSIMA(prescribed_disp_interp, inverseLoadSteps, taper, Fgps, df, df_w, "test")
 end
 
 # Muscade.study_scale(stateXUA[1][1][1]; SP = stateXUA[1][1][1].SP, verbose = true)

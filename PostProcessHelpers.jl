@@ -37,6 +37,17 @@ function extractAxialForce(vec_states, elementsToExtractFrom, maxtimestep)
     return result
 end
 
+function extractAxialForceFromStrainGauge(vec_states, elementsToExtractFrom, maxtimestep)
+    req = @request eleres(gp(resultants(fᵢ)))
+    result = Matrix{Float64}(undef,length(elementsToExtractFrom), maxtimestep)
+    for (i,element) in enumerate(elementsToExtractFrom)
+        out = getresult(vec_states,req,[element])
+        Fgp_ = [out[idxEl].eleres.gp[1][:resultants][:fᵢ] for idxEl ∈ axes(out,2)];
+        result[i,:] = Fgp_[1:maxtimestep]
+    end
+    return result
+end
+
 function extractUdofs(vec_states, tuplesLineSegmentNode, fields, nodeListPerLine, maxtimestep)
     all_nodes = [nodeListPerLine[iline][iseg][inode] for (iline,iseg,inode,_) in tuplesLineSegmentNode]
     
