@@ -24,7 +24,7 @@ g = 9.81
 @show Cc1 = 1e0
 
 # Parameters
-@show maxΔx = 1e-1
+@show maxΔx = 1e-3
 
 attenuationFactors = [0.2,0.5,0.8,1.]
 static_bias = 0.0015 # Static bias to retrieve
@@ -484,10 +484,13 @@ for (iterContinuation, attenuationFactor) in enumerate(attenuationFactors)
         # Solve static
         local staticStates_inv = solve(SweepX{0}; initialstate=initialstate_inv, time=staticLoadSteps, verbose=false, maxΔx=1e-6, maxiter=60)
 
-        # Solve X
-        local stateX = solve(DirectXUA{0,0,0};
-            initialstate=[staticStates_inv[end]],
-            time=[eps():eps():eps()*2],
+        primer = staticStates_inv[end]
+        traj = Vector{Muscade.State}(undef,length(inverseLoadSteps))
+        for (it,ti) in enumerate(inverseLoadSteps) 
+            # Solve X
+            local stateX = solve(DirectXUA{0,0,0};
+            initialstate=[primer],
+            time=[ti-eps():eps():ti],
             verbose=true,
             maxiter=100,
             maxΔx=1e-5,   # More relaxed convergence (was 1e-3, keep for now)
@@ -495,28 +498,49 @@ for (iterContinuation, attenuationFactor) in enumerate(attenuationFactors)
             maxΔa=1e-5,   # REDUCED from 1e-3 to focus on A convergence
             maxΔλ=Inf,
             saveiter=true,
-        )
+            )
+            
+            local laststepX = findlastassigned(stateX)
+            traj[it] = stateX[laststepX][1][end]
+            intermediateState = stateX[laststepX][1][end]
+            primer = intermediateState
+        end
+        local initialtrajectory = [traj]
+        
+        
+        # # Solve X
+        # local stateX = solve(DirectXUA{0,0,0};
+        #     initialstate=[staticStates_inv[end]],
+        #     time=[eps():eps():eps()*2],
+        #     verbose=true,
+        #     maxiter=100,
+        #     maxΔx=1e-5,   # More relaxed convergence (was 1e-3, keep for now)
+        #     maxΔu=Inf,
+        #     maxΔa=1e-5,   # REDUCED from 1e-3 to focus on A convergence
+        #     maxΔλ=Inf,
+        #     saveiter=true,
+        # )
 
-        local laststepX = findlastassigned(stateX)
-        local intermediateState = stateX[laststepX][1][end]
-        local initialtrajectory = nothing
+        # local laststepX = findlastassigned(stateX)
+        # local intermediateState = stateX[laststepX][1][end]
+        # local initialtrajectory = nothing
 
-        # Solve XU
-        local stateXU = solve(DirectXUA{2,0,0};
-            initialstate=[intermediateState],
-            initialtrajectory = initialtrajectory,
-            time=[inverseLoadSteps],
-            verbose=true,
-            maxiter=10,
-            maxΔx=maxΔx,   # More relaxed convergence (was 1e-3, keep for now)
-            maxΔu=Inf,
-            maxΔa=1e-5,   # REDUCED from 1e-3 to focus on A convergence
-            maxΔλ=Inf,
-            saveiter=true
-        )
-        local laststepXU = findlastassigned(stateXU)
-        local intermediateState = stateXU[laststepXU][1][1]
-        local initialtrajectory = [stateXU[laststepXU][1]]
+        # # Solve XU
+        # local stateXU = solve(DirectXUA{2,0,0};
+        #     initialstate=[intermediateState],
+        #     initialtrajectory = initialtrajectory,
+        #     time=[inverseLoadSteps],
+        #     verbose=true,
+        #     maxiter=10,
+        #     maxΔx=maxΔx,   # More relaxed convergence (was 1e-3, keep for now)
+        #     maxΔu=Inf,
+        #     maxΔa=1e-5,   # REDUCED from 1e-3 to focus on A convergence
+        #     maxΔλ=Inf,
+        #     saveiter=true
+        # )
+        # local laststepXU = findlastassigned(stateXU)
+        # local intermediateState = stateXU[laststepXU][1][1]
+        # local initialtrajectory = [stateXU[laststepXU][1]]
     
     else
         local initialtrajectory = [stateXUA[laststep][1]]
