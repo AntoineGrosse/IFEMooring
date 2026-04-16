@@ -49,7 +49,7 @@ function extractAxialForceFromStrainGauge(vec_states, elementsToExtractFrom, max
 end
 
 function extractUdofs(vec_states, tuplesLineSegmentNode, fields, nodeListPerLine, maxtimestep)
-    all_nodes = [nodeListPerLine[iline][iseg][inode] for (iline,iseg,inode,_) in tuplesLineSegmentNode]
+    all_nodes = [nodeListPerLine[iline][iseg][inode] for (iline,iseg,inode) in tuplesLineSegmentNode]
     
     # Get displacements for all nodes at each load step
     Us = Vector{}(undef,length(fields))
@@ -72,36 +72,55 @@ function extractDisplacements(vec_states, tuplesLineSegmentNode, nodeListPerLine
     return Xs
 end
 
-function plotComparisonWithSIMA(prescribed_disp_interp, loadSteps, taper_ramp, Fgps, df, df_w, runName)
+function plotComparisonWithSIMA(prescribed_disp_interp, xs,ys,zs, loadSteps, taper_ramp, Fgps, df, df_w, runName, t_min, t_max)
     
     Fgp1_=Fgps[1,:]
     Fgp2_=Fgps[2,:]
     Fgp3_=Fgps[3,:]
+
     
     # Plot comparison between Muscade and RIFLEX results. 
     fig3      = Figure(size = (1000,1000))
-
+    
     xMotion1,yMotion1,zMotion1 = prescribed_disp_interp[1]
     xMotion2,yMotion2,zMotion2 = prescribed_disp_interp[2]
     xMotion3,yMotion3,zMotion3 = prescribed_disp_interp[3]
+    xs1 = xs[1]
+    xs2 = xs[2]
+    xs3 = xs[3]
     ax1 = Axis(fig3[1, 1],ylabel="Top x. disp. [m]", title = "3 = Port side, 2 = Starboard side, 1 = Stern")
-    lines!(ax1,loadSteps,xMotion1(loadSteps),         color = :red,      linestyle = :solid,   label = "Prescribed 1")
-    lines!(ax1,loadSteps,xMotion2(loadSteps),         color = :blue,     linestyle = :solid,   label = "Prescribed 2")
-    lines!(ax1,loadSteps,xMotion3(loadSteps),         color = :green,    linestyle = :solid,   label = "Prescribed 3")
+    lines!(ax1,loadSteps,xMotion1(loadSteps),         color = :red,      linestyle = :dot,   label = "Prescribed 1")
+    lines!(ax1,loadSteps,xMotion2(loadSteps),         color = :blue,     linestyle = :dot,   label = "Prescribed 2")
+    lines!(ax1,loadSteps,xMotion3(loadSteps),         color = :green,    linestyle = :dot,   label = "Prescribed 3")
+    lines!(ax1,loadSteps,xs1,         color = :red,      linestyle = :solid,   label = "Muscade 1")
+    lines!(ax1,loadSteps,xs2,         color = :blue,     linestyle = :solid,   label = "Muscade 2")
+    lines!(ax1,loadSteps,xs3,         color = :green,    linestyle = :solid,   label = "Muscade 3")
     vlines!(df[:,"time"][taper_ramp]; ymin = 0.0, ymax = 1.0, label = "ramp slope end")
     axislegend()
     
+    ys1 = ys[1]
+    ys2 = ys[2]
+    ys3 = ys[3]
     ax2 = Axis(fig3[2, 1],ylabel="Top y. disp. [m]")
-    lines!(ax2,loadSteps,yMotion1(loadSteps),         color = :red,      linestyle = :solid,   label = "Prescribed 1")
-    lines!(ax2,loadSteps,yMotion2(loadSteps),         color = :blue,     linestyle = :solid,   label = "Prescribed 2")
-    lines!(ax2,loadSteps,yMotion3(loadSteps),         color = :green,    linestyle = :solid,   label = "Prescribed 3")
+    lines!(ax2,loadSteps,yMotion1(loadSteps),         color = :red,      linestyle = :dot,   label = "Prescribed 1")
+    lines!(ax2,loadSteps,yMotion2(loadSteps),         color = :blue,     linestyle = :dot,   label = "Prescribed 2")
+    lines!(ax2,loadSteps,yMotion3(loadSteps),         color = :green,    linestyle = :dot,   label = "Prescribed 3")
+    lines!(ax2,loadSteps,ys1,         color = :red,      linestyle = :solid,   label = "Muscade 1")
+    lines!(ax2,loadSteps,ys2,         color = :blue,     linestyle = :solid,   label = "Muscade 2")
+    lines!(ax2,loadSteps,ys3,         color = :green,    linestyle = :solid,   label = "Muscade 3")
     vlines!(df[:,"time"][taper_ramp]; ymin = 0.0, ymax = 1.0, label = "ramp slope end")
     axislegend()
     
+    zs1 = zs[1]
+    zs2 = zs[2]
+    zs3 = zs[3]
     ax3 = Axis(fig3[3, 1],ylabel="Top vert. disp. [m]")
-    lines!(ax3,loadSteps,zMotion1(loadSteps),         color = :red,      linestyle = :solid,   label = "Prescribed 1")
-    lines!(ax3,loadSteps,zMotion2(loadSteps),         color = :blue,     linestyle = :solid,   label = "Prescribed 2")
-    lines!(ax3,loadSteps,zMotion3(loadSteps),         color = :green,    linestyle = :solid,   label = "Prescribed 3")
+    lines!(ax3,loadSteps,zMotion1(loadSteps),         color = :red,      linestyle = :dot,   label = "Prescribed 1")
+    lines!(ax3,loadSteps,zMotion2(loadSteps),         color = :blue,     linestyle = :dot,   label = "Prescribed 2")
+    lines!(ax3,loadSteps,zMotion3(loadSteps),         color = :green,    linestyle = :dot,   label = "Prescribed 3")
+    lines!(ax3,loadSteps,zs1,         color = :red,      linestyle = :solid,   label = "Muscade 1")
+    lines!(ax3,loadSteps,zs2,         color = :blue,     linestyle = :solid,   label = "Muscade 2")
+    lines!(ax3,loadSteps,zs3,         color = :green,    linestyle = :solid,   label = "Muscade 3")
     vlines!(df[:,"time"][taper_ramp]; ymin = 0.0, ymax = 1.0, label = "ramp slope end")
     axislegend()
     
@@ -139,8 +158,8 @@ function plotComparisonWithSIMA(prescribed_disp_interp, loadSteps, taper_ramp, F
     df[:,"time"],
     df[:,"TensionTopChainL3 [N]"],
     )
-    t_min, t_max = 300, 400 # seconds
+    Δt =  df[2,"time"] - df[1,"time"]
     xlims!(ax2, t_min, t_max)
-    ylims!(ax2, minimum(Fgp3_interp(t_min:1:t_max)/1e3)-100, maximum(Fgp3_interp(t_min:1:t_max)/1e3)+200)
+    ylims!(ax2, minimum(Fgp3_interp(t_min:Δt:t_max)/1e3)-100, maximum(Fgp3_interp(t_min:Δt:t_max)/1e3)+200)
     save("figs/"*runName*"_dynamic_zoom.png",fig4)
 end
