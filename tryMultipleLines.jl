@@ -9,7 +9,6 @@ cd(currentDir)
 # Constants
 g = 9.81
 ρ = 1025.
-# @show Kv = 14.
 @show Kv = 14000.
 @show Cv = 0.
 
@@ -21,18 +20,19 @@ g = 9.81
 @show Ca1 = 1e3
 # U cost
 @show Cu0 = 1e-3
-@show Cu1 = 1e3
+@show Cu1 = 1e-2
 # X cost
 @show Cx1 = 1e8
 @show Cc1 = 1e0
+@show Cs1 = 1e8 # Soil cost
 
 # Parameters
-@show maxΔx = 1e-4
+@show maxΔx = 5e-4
 
 # attenuationFactors = [0.5, 1.]
-static_bias = 0.0015 # Static bias to retrieve
-Δtᵢₙᵥ = 1
-nsteps = 2e2
+static_bias = 0.00015 # Static bias to retrieve
+Δtᵢₙᵥ = 0.5
+nsteps = 4e2
 staticLoadSteps = (-10:0.1:0)
 inverseLoadSteps = (0:Δtᵢₙᵥ:(nsteps)*Δtᵢₙᵥ) .+ eps()
 InverseSolver = DirectXUA{2,0,1}
@@ -74,11 +74,14 @@ InverseSolver = DirectXUA{2,0,1}
 
 # Script booleans
 @show boolIntegrateBuoys = true
-@show boolIntegrateSoil = false
+@show boolIntegrateSoilForward = true
+@show boolIntegrateSoilInverse = false
+
+@show boolCostSoil = true
 
 @show boolUdofOnTop = true
 @show boolUdofOnAnchor = true
-@show boolUdofOnLine = false
+@show boolUdofOnLine = true
 
 @show boolXcostOnTop = true
 @show boolXcostOnAnchor = true
@@ -272,7 +275,7 @@ for iline in 1:nlines
     end
 
     # Soil contact
-    if boolIntegrateSoil
+    if boolIntegrateSoilForward
         segnumsoil = nseg
         [addelement!(model,SoilContact,[nodeLists[iline][segnumsoil][idxNod]],z₀=offsetDownwards,Kh=0.0,Kv=Kv,Ch=0.,Cv=Cv)  for idxNod = 1:length(nodeLists[iline][segnumsoil])]
     end
@@ -371,7 +374,7 @@ for iline in 1:nlines
     end
 
     # Soil contact
-    if boolIntegrateSoil
+    if boolIntegrateSoilInverse
         segnumsoil = nseg
         [addelement!(model_inv,SoilContact,[nodeLists_inv[iline][segnumsoil][idxNod]],z₀=offsetDownwards,Kh=0.0,Kv=Kv,Ch=0.,Cv=Cv)  for idxNod = 1:length(nodeLists_inv[iline][segnumsoil])]
     end
@@ -434,8 +437,8 @@ for iline in 1:nlines
         eUanch3 = addelement!(model_inv, SingleUdof, [nodeLists_inv[iline][end][end]]; Xfield=:t3,Ufield=:uat3,cost=costUaz)
     end
     if boolUdofOnLine
-        eUt1 = [addelement!(model_inv, SingleUdof, [nodeLists_inv[iline][iseg][inod]]; Xfield=:t1,Ufield=:ut1,cost=costUother) for iseg in nseg:nseg for inod in 1:nel[iseg] if (iseg,inod) ∉ [(1,1),(4,nel[4])]]
-        eUt2 = [addelement!(model_inv, SingleUdof, [nodeLists_inv[iline][iseg][inod]]; Xfield=:t2,Ufield=:ut2,cost=costUother) for iseg in nseg:nseg for inod in 1:nel[iseg] if (iseg,inod) ∉ [(1,1),(4,nel[4])]]
+        # eUt1 = [addelement!(model_inv, SingleUdof, [nodeLists_inv[iline][iseg][inod]]; Xfield=:t1,Ufield=:ut1,cost=costUother) for iseg in nseg:nseg for inod in 1:nel[iseg] if (iseg,inod) ∉ [(1,1),(4,nel[4])]]
+        # eUt2 = [addelement!(model_inv, SingleUdof, [nodeLists_inv[iline][iseg][inod]]; Xfield=:t2,Ufield=:ut2,cost=costUother) for iseg in nseg:nseg for inod in 1:nel[iseg] if (iseg,inod) ∉ [(1,1),(4,nel[4])]]
         eUt3 = [addelement!(model_inv, SingleUdof, [nodeLists_inv[iline][iseg][inod]]; Xfield=:t3,Ufield=:ut3,cost=costUother) for iseg in nseg:nseg for inod in 1:nel[iseg] if (iseg,inod) ∉ [(1,1),(4,nel[4])]]
     end
     # Top motion (perfect) measurement X cost
@@ -461,6 +464,11 @@ for iline in 1:nlines
             xinod=(1,1,1,2,2,2), xfield=(:t1,:t2,:t3,:t1,:t2,:t3),
             ainod=(3,3), afield=(:γ₀,:γ₁),
             cost=straincost)
+    end
+    # Soil cost
+    if boolCostSoil
+        @functor with() CostSoil(x,t,z₀) = z₀ < x ? 0. : loss_function(sqrt(Cs1) * (x - z₀))
+        esoilcost = [addelement!(model_inv, SingleDofCost, [nodeLists_inv[iline][iseg][inod]]; class=:X,field=:t3,cost=CostSoil,costargs=(offsetDownwards,)) for iseg in nseg:nseg for inod in 1:nel[iseg] if (iseg,inod) ∉ [(1,1),(4,nel[4])]]
     end
 end
 
@@ -580,5 +588,23 @@ if boolPlotUdofs
         lines!(axUt3, inverseLoadSteps, UdofsTop[3][:,iline]/1e3, color = :blue,   linestyle = :solid ,   label="Ut3")
         axislegend()
         save("figs/UdofsTop$(iline).png", figU)
+    end
+
+    DispsAnchor = extractDisplacements(state, [(iline,4,nel[4]-1) for iline in 1:nlines], nodeLists_inv, length(inverseLoadSteps))
+    #plotting for fairlead
+    for iline in 1:nlines
+        local az = azimuths[iline]
+        iX,iY,iZ = offsetHorizontal * cos(az), offsetHorizontal * sin(az), offsetDownwards
+        figX      = Figure(size = (1000,1000))
+        axXt1 = Axis(figX[1, 1],ylabel="x at anchor [m]",xlabel = "Time (s)")
+        lines!(axXt1, inverseLoadSteps, DispsAnchor[1][:,iline] .- iX, color = :green,   linestyle = :solid ,   label="t1")
+        axislegend()
+        axXt2 = Axis(figX[2, 1],ylabel="y at anchor [m]",xlabel = "Time (s)")
+        lines!(axXt2, inverseLoadSteps, DispsAnchor[2][:,iline] .- iY, color = :green,   linestyle = :solid ,   label="t2")
+        axislegend()
+        axXt3 = Axis(figX[3, 1],ylabel="z at anchor [m]",xlabel = "Time (s)")
+        lines!(axXt3, inverseLoadSteps, DispsAnchor[3][:,iline] .- iZ, color = :green,   linestyle = :solid ,   label="t3")
+        axislegend()
+        save("figs/XdofsAnchor$(iline).png", figX)
     end
 end
