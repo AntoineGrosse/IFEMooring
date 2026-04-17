@@ -22,17 +22,19 @@ g = 9.81
 @show Cu0 = 1e-3
 @show Cu1 = 1e-2
 # X cost
-@show Cx1 = 1e8
+@show Cx1 = 1e10
 @show Cc1 = 1e0
 @show Cs1 = 1e8 # Soil cost
+@show dz = 0.5
 
 # Parameters
-@show maxΔx = 5e-4
+@show maxΔx = 1e-5
+@show maxΔa = 1e-6
 
 # attenuationFactors = [0.5, 1.]
-static_bias = 0.00015 # Static bias to retrieve
-Δtᵢₙᵥ = 0.5
-nsteps = 4e2
+static_bias = 0.00003 # Static bias to retrieve
+Δtᵢₙᵥ = 1
+nsteps = 6e2
 staticLoadSteps = (-10:0.1:0)
 inverseLoadSteps = (0:Δtᵢₙᵥ:(nsteps)*Δtᵢₙᵥ) .+ eps()
 InverseSolver = DirectXUA{2,0,1}
@@ -44,16 +46,16 @@ InverseSolver = DirectXUA{2,0,1}
         t2=1, 
         t3=1, 
 
-        λat1=1e7, 
-        λat2=1e6, 
+        λat1=1e7,
+        λat2=1e6,
         λat3=1e7,
 
-        λpt1=1e7, 
-        λpt2=1e6, 
+        λpt1=1e7,
+        λpt2=1e6,
         λpt3=1e7
     ),
     A=(
-        γ₀=1e-2, 
+        γ₀=1e-3,
         γ₁=1e-6
     ),
     U=(
@@ -75,19 +77,19 @@ InverseSolver = DirectXUA{2,0,1}
 # Script booleans
 @show boolIntegrateBuoys = true
 @show boolIntegrateSoilForward = true
-@show boolIntegrateSoilInverse = false
+@show boolIntegrateSoilInverse = true
 
-@show boolCostSoil = true
+@show boolCostSoil = false
 
-@show boolUdofOnTop = true
-@show boolUdofOnAnchor = true
-@show boolUdofOnLine = true
+@show boolUdofOnTop = false
+@show boolUdofOnAnchor = false
+@show boolUdofOnLine = false
 
-@show boolXcostOnTop = true
-@show boolXcostOnAnchor = true
+@show boolXcostOnTop = false
+@show boolXcostOnAnchor = false
 
-@show boolXconstrOnTop = false
-@show boolXconstrOnAnchor = false
+@show boolXconstrOnTop = true
+@show boolXconstrOnAnchor = true
 
 @show boolStrainCost = true
 
@@ -95,7 +97,7 @@ InverseSolver = DirectXUA{2,0,1}
 boolPlotStatic = false
 boolAnimateForward = true
 boolAnimateInverse = true
-boolPlotUdofs = true
+boolPlotUdofs = false
 boolPlotAdofs = false
 boolPlotComparisonSIMA = true
 
@@ -186,15 +188,15 @@ file_path = "input\\test_wo.csv"
 file_path_w = "input\\test_w.csv"
 df = CSV.read(file_path, DataFrame; delim=',')
 df_w = CSV.read(file_path_w, DataFrame; delim=',')
-@show firstX1 = df[:,"Xfairlead1 [m]"][1]
-@show firstY1 = df[:,"Yfairlead1 [m]"][1]
-@show firstZ1 = df[:,"Zfairlead1 [m]"][1]
-@show firstX2 = df[:,"Xfairlead2 [m]"][1]
-@show firstY2 = df[:,"Yfairlead2 [m]"][1]
-@show firstZ2 = df[:,"Zfairlead2 [m]"][1]
-@show firstX3 = df[:,"Xfairlead3 [m]"][1]
-@show firstY3 = df[:,"Yfairlead3 [m]"][1]
-@show firstZ3 = df[:,"Zfairlead3 [m]"][1]
+firstX1 = df[:,"Xfairlead1 [m]"][1]
+firstY1 = df[:,"Yfairlead1 [m]"][1]
+firstZ1 = df[:,"Zfairlead1 [m]"][1]
+firstX2 = df[:,"Xfairlead2 [m]"][1]
+firstY2 = df[:,"Yfairlead2 [m]"][1]
+firstZ2 = df[:,"Zfairlead2 [m]"][1]
+firstX3 = df[:,"Xfairlead3 [m]"][1]
+firstY3 = df[:,"Yfairlead3 [m]"][1]
+firstZ3 = df[:,"Zfairlead3 [m]"][1]
 nSamples = length(df[:,"time"]);
 ratioSampleTaper = 0.02
 taper = floor(Int,ratioSampleTaper*nSamples)
@@ -311,6 +313,7 @@ for iline in 1:nlines
     req = @request εₐₓ
     out = getresult(stateForward, req, [elementLists[iline][1]])
     strain = [out[idxEl].εₐₓ for idxEl in axes(out,2)]
+    println("For line $(iline), sensor bias is $(round(static_bias/std(strain)*100)) % of the strain std.")
     measured_strain_list[iline] = linear_interpolation(vcat(-10., inverseLoadSteps), vcat(0., strain .+ static_bias))
 end
 
@@ -467,7 +470,7 @@ for iline in 1:nlines
     end
     # Soil cost
     if boolCostSoil
-        @functor with() CostSoil(x,t,z₀) = z₀ < x ? 0. : loss_function(sqrt(Cs1) * (x - z₀))
+        @functor with() CostSoil(x,t,z₀) = z₀ + dz < x ? loss_function(sqrt(Cs1) * 2*dz) : loss_function(sqrt(Cs1) * (x - (z₀-dz)))
         esoilcost = [addelement!(model_inv, SingleDofCost, [nodeLists_inv[iline][iseg][inod]]; class=:X,field=:t3,cost=CostSoil,costargs=(offsetDownwards,)) for iseg in nseg:nseg for inod in 1:nel[iseg] if (iseg,inod) ∉ [(1,1),(4,nel[4])]]
     end
 end
@@ -493,7 +496,7 @@ let primer = staticStates_inv[end]
         time=[ti-eps():eps():ti],
         verbose=false,
         maxiter=itermax,
-        maxΔx=1e-4,   # More relaxed convergence (was 1e-3, keep for now)
+        maxΔx=5e-3,   # More relaxed convergence (was 1e-3, keep for now)
         maxΔu=Inf,
         maxΔλ=Inf,
         saveiter=true,
@@ -518,7 +521,7 @@ stateXUA = solve(InverseSolver;
     maxiter=20,
     maxΔx=maxΔx,   # More relaxed convergence (was 1e-3, keep for now)
     maxΔu=Inf,
-    maxΔa=1e-5,   # REDUCED from 1e-3 to focus on A convergence
+    maxΔa=maxΔa,   # REDUCED from 1e-3 to focus on A convergence
     maxΔλ=Inf,
     saveiter=true
 )
@@ -606,5 +609,10 @@ if boolPlotUdofs
         lines!(axXt3, inverseLoadSteps, DispsAnchor[3][:,iline] .- iZ, color = :green,   linestyle = :solid ,   label="t3")
         axislegend()
         save("figs/XdofsAnchor$(iline).png", figX)
+    end
+
+    for iline in 1:nlines
+        strain = measured_strain_list[iline](inverseLoadSteps)
+        println("For line $(iline), sensor bias is $(round(static_bias/std(strain)*100)) % of the strain std.")
     end
 end
