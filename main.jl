@@ -1,4 +1,5 @@
 using Muscade, StaticArrays, GLMakie, Muscade.Toolbox, Interpolations, LinearAlgebra, CSV, DataFrames, Statistics
+using Muscade: equal
 include("BiasedStrainGauge.jl")
 include("MeshLineGauge.jl")
 include("ChainLink.jl")
@@ -256,12 +257,12 @@ for iline in 1:nlines
     nodeLists[iline],elementLists[iline],anodeLists[iline] = MeshLineGauge(model, topNodes[iline], local_azimuth, ChainLink, BiasedStrainGauge,xSection,segLength,nel)
 
     # X Constraints : Anchor
-    @functor with(offsetHorizontal,prestrechStaticAnalysis)   xMotionBottom(x,t,local_azimuth)  = Cc1 * (x[1] - cos(local_azimuth)*  (prestrechStaticAnalysis +  (min(t,-5.)+10)/5*( offsetHorizontal  - prestrechStaticAnalysis )))
-    @functor with(offsetHorizontal,prestrechStaticAnalysis)   yMotionBottom(x,t,local_azimuth)  = Cc1 * (x[1] - sin(local_azimuth)*  (prestrechStaticAnalysis +  (min(t,-5.)+10)/5*( offsetHorizontal  - prestrechStaticAnalysis )))
-    @functor with(offsetDownwards)                            zMotionBottom(x,t)                = Cc1 * (x[1] -                      (                           (min(t,-5.)+10)/5*( offsetDownwards                             )))
-    addelement!(model,DofConstraint,[nodeLists[iline][nseg][end]],xinod=(1,),xfield=(:t1,), λinod=1, λclass=:X, λfield=:λat1, gap=xMotionBottom, gargs=(local_azimuth,), mode=equal)
-    addelement!(model,DofConstraint,[nodeLists[iline][nseg][end]],xinod=(1,),xfield=(:t2,), λinod=1, λclass=:X, λfield=:λat2, gap=yMotionBottom, gargs=(local_azimuth,), mode=equal)
-    addelement!(model,DofConstraint,[nodeLists[iline][nseg][end]],xinod=(1,),xfield=(:t3,), λinod=1, λclass=:X, λfield=:λat3, gap=zMotionBottom,                         mode=equal);
+    @functor with(offsetHorizontal,prestrechStaticAnalysis)   xMotionBottom(x,t,local_azimuth)  = SVector{1}([Cc1 * (x[1] - cos(local_azimuth)*  (prestrechStaticAnalysis +  (min(t,-5.)+10)/5*( offsetHorizontal  - prestrechStaticAnalysis )))])
+    @functor with(offsetHorizontal,prestrechStaticAnalysis)   yMotionBottom(x,t,local_azimuth)  = SVector{1}([Cc1 * (x[1] - sin(local_azimuth)*  (prestrechStaticAnalysis +  (min(t,-5.)+10)/5*( offsetHorizontal  - prestrechStaticAnalysis )))])
+    @functor with(offsetDownwards)                            zMotionBottom(x,t)                = SVector{1}([Cc1 * (x[1] -                      (                           (min(t,-5.)+10)/5*( offsetDownwards                             )))])
+    addelement!(model,DofConstraint,[nodeLists[iline][nseg][end]],xinod=(1,),xfield=(:t1,), λinod=(1,), λclass=:X, λfield=(:λat1,), gap=xMotionBottom, gargs=(local_azimuth,), mode=equal)
+    addelement!(model,DofConstraint,[nodeLists[iline][nseg][end]],xinod=(1,),xfield=(:t2,), λinod=(1,), λclass=:X, λfield=(:λat2,), gap=yMotionBottom, gargs=(local_azimuth,), mode=equal)
+    addelement!(model,DofConstraint,[nodeLists[iline][nseg][end]],xinod=(1,),xfield=(:t3,), λinod=(1,), λclass=:X, λfield=(:λat3,), gap=zMotionBottom,                         mode=equal);
     
     # Buoys and Clampweights
     if boolIntegrateBuoys
@@ -284,10 +285,10 @@ for iline in 1:nlines
     
     # X Constraints : Top
     xMotion,yMotion,zMotion = prescribed_disp_interp[iline]
-    @functor with() MotionTop(x,t,Motion)= Cc1 * (x[1] - Motion(t))
-    addelement!(model,DofConstraint,[topNodes[iline]],xinod=(1,),xfield=(:t1,), λinod=1, λclass=:X, λfield=:λpt1, gap=MotionTop, gargs = (xMotion,), mode=equal)
-    addelement!(model,DofConstraint,[topNodes[iline]],xinod=(1,),xfield=(:t2,), λinod=1, λclass=:X, λfield=:λpt2, gap=MotionTop, gargs = (yMotion,), mode=equal)
-    addelement!(model,DofConstraint,[topNodes[iline]],xinod=(1,),xfield=(:t3,), λinod=1, λclass=:X, λfield=:λpt3, gap=MotionTop, gargs = (zMotion,), mode=equal);
+    @functor with() MotionTop(x,t,Motion)= SVector{1}([Cc1 * (x[1] - Motion(t))])
+    addelement!(model,DofConstraint,[topNodes[iline]],xinod=(1,),xfield=(:t1,), λinod=(1,), λclass=:X, λfield=(:λpt1,), gap=MotionTop, gargs = (xMotion,), mode=equal)
+    addelement!(model,DofConstraint,[topNodes[iline]],xinod=(1,),xfield=(:t2,), λinod=(1,), λclass=:X, λfield=(:λpt2,), gap=MotionTop, gargs = (yMotion,), mode=equal)
+    addelement!(model,DofConstraint,[topNodes[iline]],xinod=(1,),xfield=(:t3,), λinod=(1,), λclass=:X, λfield=(:λpt3,), gap=MotionTop, gargs = (zMotion,), mode=equal);
 end
 
 # Forward solve
@@ -356,12 +357,12 @@ for iline in 1:nlines
     # X Constraints : Anchor
     anchorConstr = boolXconstrOnAnchor ? :equal : :off
     @functor with() modeconstraintAnchor(t) = t < eps() ? :equal : anchorConstr
-    @functor with(offsetHorizontal,prestrechStaticAnalysis)   xMotionBottom(x,t,local_azimuth)  = Cc1 * (x[1] - cos(local_azimuth)*  (prestrechStaticAnalysis +  (min(t,-5.)+10)/5*( offsetHorizontal  - prestrechStaticAnalysis )))
-    @functor with(offsetHorizontal,prestrechStaticAnalysis)   yMotionBottom(x,t,local_azimuth)  = Cc1 * (x[1] - sin(local_azimuth)*  (prestrechStaticAnalysis +  (min(t,-5.)+10)/5*( offsetHorizontal  - prestrechStaticAnalysis )))
-    @functor with(offsetDownwards)                            zMotionBottom(x,t)                = Cc1 * (x[1] -                      (                           (min(t,-5.)+10)/5*( offsetDownwards                             )))
-    addelement!(model_inv,DofConstraint,[nodeLists_inv[iline][nseg][end]],xinod=(1,),xfield=(:t1,), λinod=1, λclass=:X, λfield=:λat1, gap=xMotionBottom, gargs=(local_azimuth,), mode=modeconstraintAnchor)
-    addelement!(model_inv,DofConstraint,[nodeLists_inv[iline][nseg][end]],xinod=(1,),xfield=(:t2,), λinod=1, λclass=:X, λfield=:λat2, gap=yMotionBottom, gargs=(local_azimuth,), mode=modeconstraintAnchor)
-    addelement!(model_inv,DofConstraint,[nodeLists_inv[iline][nseg][end]],xinod=(1,),xfield=(:t3,), λinod=1, λclass=:X, λfield=:λat3, gap=zMotionBottom,                         mode=modeconstraintAnchor);
+    @functor with(offsetHorizontal,prestrechStaticAnalysis)   xMotionBottom(x,t,local_azimuth)  = SVector{1}([Cc1 * (x[1] - cos(local_azimuth)*  (prestrechStaticAnalysis +  (min(t,-5.)+10)/5*( offsetHorizontal  - prestrechStaticAnalysis )))])
+    @functor with(offsetHorizontal,prestrechStaticAnalysis)   yMotionBottom(x,t,local_azimuth)  = SVector{1}([Cc1 * (x[1] - sin(local_azimuth)*  (prestrechStaticAnalysis +  (min(t,-5.)+10)/5*( offsetHorizontal  - prestrechStaticAnalysis )))])
+    @functor with(offsetDownwards)                            zMotionBottom(x,t)                = SVector{1}([Cc1 * (x[1] -                      (                           (min(t,-5.)+10)/5*( offsetDownwards                             )))])
+    addelement!(model_inv,DofConstraint,[nodeLists_inv[iline][nseg][end]],xinod=(1,),xfield=(:t1,), λinod=(1,), λclass=:X, λfield=(:λat1,), gap=xMotionBottom, gargs=(local_azimuth,), mode=modeconstraintAnchor)
+    addelement!(model_inv,DofConstraint,[nodeLists_inv[iline][nseg][end]],xinod=(1,),xfield=(:t2,), λinod=(1,), λclass=:X, λfield=(:λat2,), gap=yMotionBottom, gargs=(local_azimuth,), mode=modeconstraintAnchor)
+    addelement!(model_inv,DofConstraint,[nodeLists_inv[iline][nseg][end]],xinod=(1,),xfield=(:t3,), λinod=(1,), λclass=:X, λfield=(:λat3,), gap=zMotionBottom,                         mode=modeconstraintAnchor);
     
     # Buoys and Clampweights
     if boolIntegrateBuoys
@@ -386,10 +387,10 @@ for iline in 1:nlines
     xMotion,yMotion,zMotion = prescribed_disp_interp[iline]
     topConstr = boolXconstrOnTop ? :equal : :off
     @functor with() modeconstraintTop(t) = t < eps() ? :equal : topConstr
-    @functor with() MotionTop(x,t,Motion)= Cc1 * (x[1] - Motion(t))
-    addelement!(model_inv,DofConstraint,[topNodes_inv[iline]],xinod=(1,),xfield=(:t1,), λinod=1, λclass=:X, λfield=:λpt1, gap=MotionTop, gargs=(xMotion,), mode=modeconstraintTop)
-    addelement!(model_inv,DofConstraint,[topNodes_inv[iline]],xinod=(1,),xfield=(:t2,), λinod=1, λclass=:X, λfield=:λpt2, gap=MotionTop, gargs=(yMotion,), mode=modeconstraintTop)
-    addelement!(model_inv,DofConstraint,[topNodes_inv[iline]],xinod=(1,),xfield=(:t3,), λinod=1, λclass=:X, λfield=:λpt3, gap=MotionTop, gargs=(zMotion,), mode=modeconstraintTop);
+    @functor with() MotionTop(x,t,Motion)= SVector{1}([Cc1 * (x[1] - Motion(t))])
+    addelement!(model_inv,DofConstraint,[topNodes_inv[iline]],xinod=(1,),xfield=(:t1,), λinod=(1,), λclass=:X, λfield=(:λpt1,), gap=MotionTop, gargs=(xMotion,), mode=modeconstraintTop)
+    addelement!(model_inv,DofConstraint,[topNodes_inv[iline]],xinod=(1,),xfield=(:t2,), λinod=(1,), λclass=:X, λfield=(:λpt2,), gap=MotionTop, gargs=(yMotion,), mode=modeconstraintTop)
+    addelement!(model_inv,DofConstraint,[topNodes_inv[iline]],xinod=(1,),xfield=(:t3,), λinod=(1,), λclass=:X, λfield=(:λpt3,), gap=MotionTop, gargs=(zMotion,), mode=modeconstraintTop);
 
     # Strain cost
     element1 = elementLists_inv[iline][1]
