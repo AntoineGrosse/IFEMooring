@@ -256,8 +256,8 @@ function Muscade.update_drawing(axis,o::AbstractVector{ChainLink{Tmat,Udof}},old
 end
 
 function Muscade.display_drawing!(axis,::Type{ChainLink{Tmat,Udof}},obs,opt) where{Tmat,Udof}
-    scatter!(           axis, obs.node       ,color = opt.line_color , marker=:circle,markersize=3)  
-    lines!(             axis, obs.shape_x    ,color = opt.line_color ,linewidth=.5                )
+    scatter!(           axis, obs.node       ,color = opt.line_color , marker=:circle,markersize=7)  
+    lines!(             axis, obs.shape_x    ,color = opt.line_color ,linewidth=7                )
     opt.Udof  && lines!(axis, obs.ucrest     ,color = :red           ,linewidth=.5                )    
 end
 

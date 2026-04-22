@@ -16,18 +16,19 @@ g = 9.81
 # Strain
 @show σ = 1e-2
 # A cost
-@show Ca0 = 1e-3
-@show Ca1 = 1e3
-
+@show Ca0 = 1e-6
+@show Ca1 = 1e-10
 # Parameters
-@show ratioStaticBias = 0.1
+@show bias_err  = 1e5  /2.4681e09
+@show scaling_err = 0.2
+@show std_noise = 1e5   /2.4681e09 # STD of the gaussian noise to apply to the measurement
 @show maxΔx = 1e-5
-@show maxΔa = 1e-6
+@show maxΔa = 2e-6
 
-Δtᵢₙᵥ = 1.
+Δtᵢₙᵥ = 0.5
 nsteps = 6e2
 staticLoadSteps = (-10:0.1:0)
-inverseLoadSteps = (0:Δtᵢₙᵥ:(nsteps)*Δtᵢₙᵥ) .+ eps()
+inverseLoadSteps = (0:Δtᵢₙᵥ:(nsteps-1)*Δtᵢₙᵥ) .+ eps()
 
 
 # Scaling    
@@ -47,20 +48,7 @@ inverseLoadSteps = (0:Δtᵢₙᵥ:(nsteps)*Δtᵢₙᵥ) .+ eps()
     ),
     A=(
         γ₀=1e-3,
-        γ₁=1e-6
-    ),
-    U=(
-        ut1 = 1e-2, 
-        ut2 = 1e-2, 
-        ut3 = 1e-2, 
-
-        upt1 = 1e6, 
-        upt2 = 1e6, 
-        upt3 = 1e6,
-
-        uat1 = 1e6,
-        uat2 = 1e6, 
-        uat3 = 1e6
+        γ₁=1e-1
     ),
 )
 @show Λscale = 1e0 # The bigger the more Importance given to Residual over Costs, so the more importance given to Physical Model on Data Model 
@@ -159,8 +147,7 @@ topInitCoord = [
     [initX2,initY2,initZ2],
     [initX3,initY3,initZ3],
 ]
-nlines = length(topInitCoord)# static_bias = 0.000003 # Static bias to retrieve
-static_bias_list = Vector{Float64}(undef,nlines) # Static bias to retrieve
+nlines = length(topInitCoord)# bias_err = 0.000003 # Static bias to retrieve
 yaw0 = 0.
 azimuths = [
     (0. - yaw0) * π/180.,
@@ -289,16 +276,23 @@ stateForward = solve(SweepX{2};
 
 # Making artificial measurement data from forward solving
 measured_strain_list = Vector{}(undef,nlines)
+bias_err_list = Vector{Float64}(undef,nlines)    # Static bias to retrieve
+scaling_err_list = Vector{Float64}(undef,nlines)   # Dynamic bias to retrieve
+mean_list           = Vector{Float64}(undef,nlines)      
+std_list            = Vector{Float64}(undef,nlines)       
 for iline in 1:nlines
     req = @request εₐₓ
     out = getresult(stateForward, req, [elementLists[iline][1]])
     strain = [out[idxEl].εₐₓ for idxEl in axes(out,2)]
     m,s = mean(strain), std(strain)
-    local static_bias = ratioStaticBias * m
-    static_bias_list[iline] = static_bias
-    println("For line $(iline), sensor bias is $(static_bias/m*100) % of the strain mean.")
+    # local bias_err = ratioStaticBias * m
+    # local scaling_err = ratioDynamicBias * s
+    bias_err_list[iline] = bias_err
+    scaling_err_list[iline] = scaling_err
+    mean_list[iline] = m
+    std_list[iline] = s
     println("Strain mean is $(m) and strain std is $(s).")
-    measured_strain_list[iline] = linear_interpolation(vcat(-10., inverseLoadSteps), vcat(0., strain .+ static_bias))
+    measured_strain_list[iline] = linear_interpolation(vcat(-10., inverseLoadSteps), vcat(0., (1 + scaling_err) .* strain .+ bias_err .+ randn(size(strain)) .* std_noise))
 end
 
 if boolAnimateForward
@@ -306,12 +300,12 @@ if boolAnimateForward
 end
 
 if boolPlotComparisonSIMA
-    Fgps = extractAxialForceFromStrainGauge(stateForward, [elementLists[iline][1]  for iline in 1:nlines], length(inverseLoadSteps))
+    global Fgps_for = extractAxialForceFromStrainGauge(stateForward, [elementLists[iline][1]  for iline in 1:nlines], length(inverseLoadSteps))
     Disps = extractDisplacements(stateForward, [(iline,1,1) for iline in 1:nlines], nodeLists, length(inverseLoadSteps))
     xs = [Disps[1][:,iline] for iline in 1:nlines]
     ys = [Disps[2][:,iline] for iline in 1:nlines]
     zs = [Disps[3][:,iline] for iline in 1:nlines]
-    plotComparisonWithSIMA(prescribed_disp_interp, xs,ys,zs, inverseLoadSteps, taper, Fgps, df, df_w, "test", 120, 180)
+    plotComparisonWithSIMA(prescribed_disp_interp, xs,ys,zs, inverseLoadSteps, taper, Fgps_for, df, df_w, "test", 120, 180)
 end
 
 @time begin
@@ -432,8 +426,8 @@ end
         for (it,ti) in enumerate(inverseLoadSteps)
             boolVerboseStaticInverse ? println("=== Inverse static for timestep $(it)/$(length(inverseLoadSteps)) ===") : nothing
             # Solve X
-            itermax = 200
-            local stateX = solve(DirectXUA{0,0,1};
+            itermax = 10
+            local stateX = solve(DirectXUA{0,0,0};
             initialstate=[primer],
             time=[ti-eps():eps():ti],
             verbose=false,
@@ -460,7 +454,7 @@ end
         initialtrajectory = initialtrajectory,
         time=[inverseLoadSteps],
         verbose=true,
-        maxiter=20,
+        maxiter=15,
         maxΔx=maxΔx,
         maxΔu=Inf,
         maxΔa=maxΔa,
@@ -472,18 +466,22 @@ laststep = findlastassigned(stateXUA)
 if laststep > 0
     state = stateXUA[laststep][1]
 
+    println("Converged !")
+    println("====================================")
     for iline in 1:nlines
         println("------------------------------------")
         strain = measured_strain_list[iline](inverseLoadSteps)
-        local static_bias = static_bias_list[iline]
-        local m = mean(strain)-static_bias
-        println("For line $(iline), sensor bias is $(static_bias/m*100) % of the strain mean.")
+        local bias_err = bias_err_list[iline]
+        local scaling_err = scaling_err_list[iline]
+        m,s  = mean_list[iline], std_list[iline]
+        println("For line $(iline), static bias is $(bias_err/m*100) % of MEAN.")
+        println("For line $(iline), dynamic bias is $(scaling_err/s*100) % of STD.")
         staticdev = VALUE(state[end].A[iline*2-1])
         dynamicdev = VALUE(state[end].A[iline*2])
-        local static_bias =  static_bias_list[iline] 
-        println("Converged: Static dev Line $(iline) = $staticdev, True = $static_bias, Error = $(abs(staticdev - static_bias)/m * 100) %")
-        println("Dynamic dev Line $(iline) = $dynamicdev")
+        println("Static dev Line $(iline) = $(staticdev), True = $(bias_err), Error = $(abs(staticdev - bias_err)/bias_err * 100) %")
+        println("Dynamic dev Line $(iline) = $(dynamicdev), True = $(scaling_err), Error = $(abs(dynamicdev - scaling_err)/scaling_err * 100) %")
     end
+    println("====================================\n")
 else
     println("Did not converge")
 end
@@ -494,11 +492,60 @@ if boolAnimateInverse
     animateStates("Animation inverse iterations", 1:1:laststep, 10., 10., waterDepth, states_reconstruction, "figs/reconstructionIterations.mp4")
 end
 
-Fgps = extractAxialForceFromStrainGauge(state, [elementLists_inv[iline][1]  for iline in 1:nlines], length(inverseLoadSteps))
+Fgps_inv = extractAxialForceFromStrainGauge(state, [elementLists_inv[iline][1]  for iline in 1:nlines], length(inverseLoadSteps))
 Disps = extractDisplacements(state, [(iline,1,1) for iline in 1:nlines], nodeLists_inv, length(inverseLoadSteps))
 xs = [Disps[1][:,iline] for iline in 1:nlines]
 ys = [Disps[2][:,iline] for iline in 1:nlines]
 zs = [Disps[3][:,iline] for iline in 1:nlines]
 
-plotComparisonWithSIMA(prescribed_disp_interp, xs,ys,zs, inverseLoadSteps, taper, Fgps, df, df_w, "testinverse", 120, 180)
 
+Fgps_bias = Matrix{Float64}(undef,nlines, length(inverseLoadSteps))
+for iline in 1:nlines
+    strain = measured_strain_list[iline]
+    Fgps_bias[iline,:] = strain(inverseLoadSteps) .* x1_EA
+end
+
+plotComparisonWithForward(inverseLoadSteps, Fgps_inv, Fgps_for, Fgps_bias, "testinverse", 120, 180)
+
+Fgps_measinv = Matrix{Float64}(undef,nlines, length(inverseLoadSteps))
+for iline in 1:nlines
+    strain_inv = Fgps_inv[iline,:]/x1_EA
+    staticdev = VALUE(state[end].A[iline*2-1])
+    dynamicdev = VALUE(state[end].A[iline*2])
+    Fgps_measinv[iline,:] = ((1+dynamicdev) .* strain_inv .+ staticdev) .* x1_EA
+end
+
+plotComparisonWithForward(inverseLoadSteps, Fgps_inv, Fgps_bias, Fgps_measinv,  "withmeasured", 120, 180)
+
+# Create a DataFrame to dump into CSV
+df_out = DataFrame(
+    iline = Int[],
+    nsteps = Int[],
+    dt = Float64[],
+    std_noise = Float64[],
+    bias_err = Float64[],
+    scaling_err = Float64[],
+    mean_tension = Float64[],
+    std_tension = Float64[],
+    staticdev = Float64[],
+    dynamicdev = Float64[]
+)
+
+for iline in 1:nlines
+    staticdev = VALUE(state[end].A[iline*2-1])
+    dynamicdev = VALUE(state[end].A[iline*2])
+    push!(df_out, (
+        iline,
+        length(inverseLoadSteps),
+        Δtᵢₙᵥ,
+        std_noise* x1_EA / 1e3,
+        bias_err_list[iline]* x1_EA / 1e3,
+        scaling_err_list[iline],
+        mean_list[iline] * x1_EA / 1e3,
+        std_list[iline] * x1_EA / 1e3,
+        staticdev * x1_EA / 1e3,
+        dynamicdev
+    ))
+end
+
+CSV.write("output_summary.csv", df_out)
