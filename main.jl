@@ -13,25 +13,26 @@ g = 9.81
 @show Kv = 14000.
 
 # Cost factors
+@show Cu1 = 1e-4
 # Strain
 @show σ = 1e-2
 # A cost
-@show Ca0 = 1e-6
-@show Ca1 = 1e-10
+@show Ca0 = 1e-2
+@show Ca1 = 1e10
 # Parameters
-@show bias_err  = 1e5  /2.4681e09
-@show scaling_err = 0.2
-@show std_noise = 1e5   /2.4681e09 # STD of the gaussian noise to apply to the measurement
+@show bias_err      = 10* 10e3  /2.4681e09
+@show scaling_err   = 00* 0.01
+@show std_noise     = 10* 10e3   /2.4681e09 # STD of the gaussian noise to apply to the measurement
 @show maxΔx = 1e-5
-@show maxΔa = 2e-6
+@show maxΔa = 1e-5
+@show maxiterinv = 12
 
 Δtᵢₙᵥ = 0.5
-nsteps = 6e2
+nsteps =6e2
 staticLoadSteps = (-10:0.1:0)
 inverseLoadSteps = (0:Δtᵢₙᵥ:(nsteps-1)*Δtᵢₙᵥ) .+ eps()
 
-
-# Scaling    
+# Scaling
 @show scale = (
     X=(
         t1=1, 
@@ -47,7 +48,7 @@ inverseLoadSteps = (0:Δtᵢₙᵥ:(nsteps-1)*Δtᵢₙᵥ) .+ eps()
         λpt3=1e7
     ),
     A=(
-        γ₀=1e-3,
+        γ₀=1e-4,
         γ₁=1e-1
     ),
 )
@@ -208,72 +209,73 @@ prescribed_disp_interp = [
 ##########################################
 ## Forward
 ##########################################
+println("======= Forward solve =======")
+@time begin
+    topNodes = Vector{Muscade.NodID}(undef,nlines)
+    nodeLists  =   Vector{Vector{Vector{Muscade.NodID}}}(undef,nlines*nseg)
+    elementLists = Vector{Vector{Muscade.EleID}}(undef,nlines)
+    anodeLists = Vector{Muscade.NodID}(undef,nlines)
 
-topNodes = Vector{Muscade.NodID}(undef,nlines)
-nodeLists  =   Vector{Vector{Vector{Muscade.NodID}}}(undef,nlines*nseg)
-elementLists = Vector{Vector{Muscade.EleID}}(undef,nlines)
-anodeLists = Vector{Muscade.NodID}(undef,nlines)
+    model = Model(:testline)
+    for iline in 1:nlines
+        local_azimuth = azimuths[iline]
+        # Line
+        coordTopNode = topInitCoord[iline]
+        topNodes[iline] = addnode!(model,coordTopNode)
+        nodeLists[iline],elementLists[iline],anodeLists[iline] = MeshLineGauge(model, topNodes[iline], local_azimuth, ChainLink, BiasedStrainGauge,xSection,segLength,nel)
 
-model = Model(:testline)
-for iline in 1:nlines
-    local_azimuth = azimuths[iline]
-    # Line
-    coordTopNode = topInitCoord[iline]
-    topNodes[iline] = addnode!(model,coordTopNode)
-    nodeLists[iline],elementLists[iline],anodeLists[iline] = MeshLineGauge(model, topNodes[iline], local_azimuth, ChainLink, BiasedStrainGauge,xSection,segLength,nel)
+        # X Constraints : Anchor
+        @functor with(offsetHorizontal,prestrechStaticAnalysis)   xMotionBottom(x,t,local_azimuth)  = SVector{1}([1.0 * (x[1] - cos(local_azimuth)*  (prestrechStaticAnalysis +  (min(t,-5.)+10)/5*( offsetHorizontal  - prestrechStaticAnalysis )))])
+        @functor with(offsetHorizontal,prestrechStaticAnalysis)   yMotionBottom(x,t,local_azimuth)  = SVector{1}([1.0 * (x[1] - sin(local_azimuth)*  (prestrechStaticAnalysis +  (min(t,-5.)+10)/5*( offsetHorizontal  - prestrechStaticAnalysis )))])
+        @functor with(offsetDownwards)                            zMotionBottom(x,t)                = SVector{1}([1.0 * (x[1] -                      (                           (min(t,-5.)+10)/5*( offsetDownwards                             )))])
+        addelement!(model,DofConstraint,[nodeLists[iline][nseg][end]],xinod=(1,),xfield=(:t1,), λinod=(1,), λclass=:X, λfield=(:λat1,), gap=xMotionBottom, gargs=(local_azimuth,), mode=equal)
+        addelement!(model,DofConstraint,[nodeLists[iline][nseg][end]],xinod=(1,),xfield=(:t2,), λinod=(1,), λclass=:X, λfield=(:λat2,), gap=yMotionBottom, gargs=(local_azimuth,), mode=equal)
+        addelement!(model,DofConstraint,[nodeLists[iline][nseg][end]],xinod=(1,),xfield=(:t3,), λinod=(1,), λclass=:X, λfield=(:λat3,), gap=zMotionBottom,                         mode=equal);
+        
+        # Buoys and Clampweights
+        if boolIntegrateBuoys
+            nodnum_buoygrav_topchain = 2
+            nodnum_buoygrav_midpolyester = nseg - 1
+            nodnum_buoygrav_bottomchain = nseg
+            @functor with() buoygravForce_topchain(t)       = ((min(t,-5.)+10)/5) * (-3 + 0. ) * 1e3 * g
+            @functor with() buoygravForce_midpolyester(t)   = ((min(t,-5.)+10)/5) * (-3 + 10.) * 1e3 * g
+            @functor with() buoygravForce_bottomchain(t)    = ((min(t,-5.)+10)/5) * (-3 + 15.) * 1e3 * g
+            addelement!(model,DofLoad,[nodeLists[iline][nodnum_buoygrav_topchain][1]];field=:t3,value=buoygravForce_topchain);  
+            addelement!(model,DofLoad,[nodeLists[iline][nodnum_buoygrav_midpolyester][1]];field=:t3,value=buoygravForce_midpolyester);  
+            addelement!(model,DofLoad,[nodeLists[iline][nodnum_buoygrav_bottomchain][1]];field=:t3,value=buoygravForce_bottomchain);  
+        end
 
-    # X Constraints : Anchor
-    @functor with(offsetHorizontal,prestrechStaticAnalysis)   xMotionBottom(x,t,local_azimuth)  = SVector{1}([1.0 * (x[1] - cos(local_azimuth)*  (prestrechStaticAnalysis +  (min(t,-5.)+10)/5*( offsetHorizontal  - prestrechStaticAnalysis )))])
-    @functor with(offsetHorizontal,prestrechStaticAnalysis)   yMotionBottom(x,t,local_azimuth)  = SVector{1}([1.0 * (x[1] - sin(local_azimuth)*  (prestrechStaticAnalysis +  (min(t,-5.)+10)/5*( offsetHorizontal  - prestrechStaticAnalysis )))])
-    @functor with(offsetDownwards)                            zMotionBottom(x,t)                = SVector{1}([1.0 * (x[1] -                      (                           (min(t,-5.)+10)/5*( offsetDownwards                             )))])
-    addelement!(model,DofConstraint,[nodeLists[iline][nseg][end]],xinod=(1,),xfield=(:t1,), λinod=(1,), λclass=:X, λfield=(:λat1,), gap=xMotionBottom, gargs=(local_azimuth,), mode=equal)
-    addelement!(model,DofConstraint,[nodeLists[iline][nseg][end]],xinod=(1,),xfield=(:t2,), λinod=(1,), λclass=:X, λfield=(:λat2,), gap=yMotionBottom, gargs=(local_azimuth,), mode=equal)
-    addelement!(model,DofConstraint,[nodeLists[iline][nseg][end]],xinod=(1,),xfield=(:t3,), λinod=(1,), λclass=:X, λfield=(:λat3,), gap=zMotionBottom,                         mode=equal);
-    
-    # Buoys and Clampweights
-    if boolIntegrateBuoys
-        nodnum_buoygrav_topchain = 2
-        nodnum_buoygrav_midpolyester = nseg - 1
-        nodnum_buoygrav_bottomchain = nseg
-        @functor with() buoygravForce_topchain(t)       = ((min(t,-5.)+10)/5) * (-3 + 0. ) * 1e3 * g
-        @functor with() buoygravForce_midpolyester(t)   = ((min(t,-5.)+10)/5) * (-3 + 10.) * 1e3 * g
-        @functor with() buoygravForce_bottomchain(t)    = ((min(t,-5.)+10)/5) * (-3 + 15.) * 1e3 * g
-        addelement!(model,DofLoad,[nodeLists[iline][nodnum_buoygrav_topchain][1]];field=:t3,value=buoygravForce_topchain);  
-        addelement!(model,DofLoad,[nodeLists[iline][nodnum_buoygrav_midpolyester][1]];field=:t3,value=buoygravForce_midpolyester);  
-        addelement!(model,DofLoad,[nodeLists[iline][nodnum_buoygrav_bottomchain][1]];field=:t3,value=buoygravForce_bottomchain);  
+        # Soil contact
+        if boolIntegrateSoilForward
+            segnumsoil = nseg
+            [addelement!(model,SoilContact,[nodeLists[iline][segnumsoil][idxNod]],z₀=offsetDownwards,Kh=0.0,Kv=Kv,Ch=0.,Cv=0.)  for idxNod = 1:length(nodeLists[iline][segnumsoil])]
+        end
+        
+        # X Constraints : Top
+        xMotion,yMotion,zMotion = prescribed_disp_interp[iline]
+        @functor with() MotionTop(x,t,Motion)= SVector{1}([1.0 * (x[1] - Motion(t))])
+        addelement!(model,DofConstraint,[topNodes[iline]],xinod=(1,),xfield=(:t1,), λinod=(1,), λclass=:X, λfield=(:λpt1,), gap=MotionTop, gargs = (xMotion,), mode=equal)
+        addelement!(model,DofConstraint,[topNodes[iline]],xinod=(1,),xfield=(:t2,), λinod=(1,), λclass=:X, λfield=(:λpt2,), gap=MotionTop, gargs = (yMotion,), mode=equal)
+        addelement!(model,DofConstraint,[topNodes[iline]],xinod=(1,),xfield=(:t3,), λinod=(1,), λclass=:X, λfield=(:λpt3,), gap=MotionTop, gargs = (zMotion,), mode=equal);
     end
 
-    # Soil contact
-    if boolIntegrateSoilForward
-        segnumsoil = nseg
-        [addelement!(model,SoilContact,[nodeLists[iline][segnumsoil][idxNod]],z₀=offsetDownwards,Kh=0.0,Kv=Kv,Ch=0.,Cv=0.)  for idxNod = 1:length(nodeLists[iline][segnumsoil])]
+    # Forward solve
+    initialstate = initialize!(model)
+    staticStates = solve(SweepX{0}; initialstate, time=staticLoadSteps, verbose=false, maxΔx=1e-6, maxiter=60)
+
+    if boolPlotStatic
+        plotStaticStates("",length(staticLoadSteps), initialstate, staticStates, "figs/static.png")
     end
-    
-    # X Constraints : Top
-    xMotion,yMotion,zMotion = prescribed_disp_interp[iline]
-    @functor with() MotionTop(x,t,Motion)= SVector{1}([1.0 * (x[1] - Motion(t))])
-    addelement!(model,DofConstraint,[topNodes[iline]],xinod=(1,),xfield=(:t1,), λinod=(1,), λclass=:X, λfield=(:λpt1,), gap=MotionTop, gargs = (xMotion,), mode=equal)
-    addelement!(model,DofConstraint,[topNodes[iline]],xinod=(1,),xfield=(:t2,), λinod=(1,), λclass=:X, λfield=(:λpt2,), gap=MotionTop, gargs = (yMotion,), mode=equal)
-    addelement!(model,DofConstraint,[topNodes[iline]],xinod=(1,),xfield=(:t3,), λinod=(1,), λclass=:X, λfield=(:λpt3,), gap=MotionTop, gargs = (zMotion,), mode=equal);
+
+    stateForward = solve(SweepX{2};
+        initialstate=staticStates[end], 
+        time=inverseLoadSteps, 
+        maxΔx=1e-6, 
+        verbose=false, 
+        maxiter=100,
+        β=1/3.,γ=0.605, # Unconditionally stable for : γ >= .5 &&  2 β >= γ)
+    )
 end
-
-# Forward solve
-initialstate = initialize!(model)
-staticStates = solve(SweepX{0}; initialstate, time=staticLoadSteps, verbose=false, maxΔx=1e-6, maxiter=60)
-
-if boolPlotStatic
-    plotStaticStates("",length(staticLoadSteps), initialstate, staticStates, "figs/static.png")
-end
-
-stateForward = solve(SweepX{2};
-    initialstate=staticStates[end], 
-    time=inverseLoadSteps, 
-    maxΔx=1e-6, 
-    verbose=false, 
-    maxiter=100,
-    β=1/3.,γ=0.605, # Unconditionally stable for : γ >= .5 &&  2 β >= γ)
-)
-
 # Making artificial measurement data from forward solving
 measured_strain_list = Vector{}(undef,nlines)
 bias_err_list = Vector{Float64}(undef,nlines)    # Static bias to retrieve
@@ -285,8 +287,6 @@ for iline in 1:nlines
     out = getresult(stateForward, req, [elementLists[iline][1]])
     strain = [out[idxEl].εₐₓ for idxEl in axes(out,2)]
     m,s = mean(strain), std(strain)
-    # local bias_err = ratioStaticBias * m
-    # local scaling_err = ratioDynamicBias * s
     bias_err_list[iline] = bias_err
     scaling_err_list[iline] = scaling_err
     mean_list[iline] = m
@@ -308,14 +308,21 @@ if boolPlotComparisonSIMA
     plotComparisonWithSIMA(prescribed_disp_interp, xs,ys,zs, inverseLoadSteps, taper, Fgps_for, df, df_w, "test", 120, 180)
 end
 
+println("======= Inverse solve =======")
 @time begin
     ##########################################
     ## Inverse
     ##########################################
     # Penalties - adjusted for larger strains
-    @functor with() costA(a) = loss_function(sqrt(Ca0) * (a - 0.))
-    @functor with() costAother(a) = loss_function(sqrt(Ca1) * (a - 0.))
-    @functor with() costUother(u,t) = loss_function(sqrt(Cu1) * (u - 0.))
+    # Create mutable references
+    Ca0_mut = [Ca0]
+    Ca1_mut = [Ca1] # Start massive to freeze γ1
+    # Ca1_mut = [1e10] # Start massive to freeze γ1
+
+    # Update functors (use the arrays)
+    @functor with(Ca0_mut) costA(a) = loss_function(sqrt(Ca0_mut[1]) * (a - 0.))
+    @functor with(Ca1_mut) costAother(a) = loss_function(sqrt(Ca1_mut[1]) * (a - 0.))
+    @functor with(Cu1) costUother(u,t) = loss_function(sqrt(Cu1) * (u - 0.))
 
     vec3(v,ind) = SVector{3}(v[i] for i∈ind)
 
@@ -454,13 +461,49 @@ end
         initialtrajectory = initialtrajectory,
         time=[inverseLoadSteps],
         verbose=true,
-        maxiter=15,
+        maxiter=maxiterinv,
         maxΔx=maxΔx,
         maxΔu=Inf,
         maxΔa=maxΔa,
         maxΔλ=Inf,
         saveiter=true
     )
+
+    # # INITIAL DYNAMIC SOLVE (Phase 2)
+    # # Ca1_mut[1] is still 1e5, so γ1 is frozen. Optimizer focuses on γ0
+    # stateXUA_phase2 = solve(DirectXUA{2,0,1};
+    #     initialstate=[intermediateState],
+    #     initialtrajectory = initialtrajectory,
+    #     time=[inverseLoadSteps],
+    #     verbose=true,
+    #     maxiter=5,
+    #     maxΔx=maxΔx,
+    #     maxΔu=Inf,
+    #     maxΔa=maxΔa,
+    #     maxΔλ=Inf,
+    #     saveiter=true
+    # )
+
+    # laststep_phase2 = findlastassigned(stateXUA_phase2)
+    # trajectory_phase2 = stateXUA_phase2[laststep_phase2][1]
+
+    # # RELEASE DYNAMIC COST (Phase 3)
+    # Ca1_mut[1] = Ca1 # Bring it down to 1e-10
+    
+    # # FINAL DYNAMIC SOLVE
+    # # Starting exactly from Phase 2's converged state
+    # stateXUA = solve(DirectXUA{2,0,1};
+    #     initialstate=[trajectory_phase2[1]],      # Start time step of phase 2
+    #     initialtrajectory = [trajectory_phase2],  # Use full phase 2 trajectory as primer
+    #     time=[inverseLoadSteps],
+    #     verbose=true,
+    #     maxiter=5,
+    #     maxΔx=maxΔx,
+    #     maxΔu=Inf,
+    #     maxΔa=maxΔa,
+    #     maxΔλ=Inf,
+    #     saveiter=true
+    # )
 end
 laststep = findlastassigned(stateXUA)
 if laststep > 0
@@ -475,11 +518,11 @@ if laststep > 0
         local scaling_err = scaling_err_list[iline]
         m,s  = mean_list[iline], std_list[iline]
         println("For line $(iline), static bias is $(bias_err/m*100) % of MEAN.")
-        println("For line $(iline), dynamic bias is $(scaling_err/s*100) % of STD.")
+        # println("For line $(iline), dynamic bias is $(scaling_err/s*100) % of STD.")
         staticdev = VALUE(state[end].A[iline*2-1])
         dynamicdev = VALUE(state[end].A[iline*2])
-        println("Static dev Line $(iline) = $(staticdev), True = $(bias_err), Error = $(abs(staticdev - bias_err)/bias_err * 100) %")
-        println("Dynamic dev Line $(iline) = $(dynamicdev), True = $(scaling_err), Error = $(abs(dynamicdev - scaling_err)/scaling_err * 100) %")
+        println("Static dev Line $(iline) = $(staticdev), True = $(bias_err), Error = $(abs(staticdev - bias_err)/m * 100) %")
+        println("Dynamic dev Line $(iline) = $(dynamicdev), True = $(scaling_err), Error = $(abs(dynamicdev - scaling_err) * 100) %")
     end
     println("====================================\n")
 else
@@ -505,7 +548,7 @@ for iline in 1:nlines
     Fgps_bias[iline,:] = strain(inverseLoadSteps) .* x1_EA
 end
 
-plotComparisonWithForward(inverseLoadSteps, Fgps_inv, Fgps_for, Fgps_bias, "testinverse", 120, 180)
+# plotComparisonWithForward(inverseLoadSteps, Fgps_inv, Fgps_for, Fgps_bias, "testinverse", 120, 180)
 
 Fgps_measinv = Matrix{Float64}(undef,nlines, length(inverseLoadSteps))
 for iline in 1:nlines
@@ -515,7 +558,7 @@ for iline in 1:nlines
     Fgps_measinv[iline,:] = ((1+dynamicdev) .* strain_inv .+ staticdev) .* x1_EA
 end
 
-plotComparisonWithForward(inverseLoadSteps, Fgps_inv, Fgps_bias, Fgps_measinv,  "withmeasured", 120, 180)
+plotComparisonWithForward(inverseLoadSteps, Fgps_inv, Fgps_for, Fgps_bias, Fgps_measinv,  "withmeasured", 120, 180)
 
 # Create a DataFrame to dump into CSV
 df_out = DataFrame(
@@ -548,4 +591,7 @@ for iline in 1:nlines
     ))
 end
 
-CSV.write("output_summary.csv", df_out)
+CSV.write("output_summary.csv", df_out, delim=';', decimal=',')
+
+
+# Muscade.study_scale(state[end];SP=state[end].SP, verbose=true)

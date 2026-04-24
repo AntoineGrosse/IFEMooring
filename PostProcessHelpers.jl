@@ -186,7 +186,7 @@ function plotComparisonWithSIMA(prescribed_disp_interp, xs,ys,zs, loadSteps, tap
     save("figs/"*runName*"_dynamic_zoom.png",fig4)
 end
 
-function plotComparisonWithForward(loadSteps, Fgps_inverse, Fgps_forward, Fgps_biased, runName, t_min, t_max)
+function plotComparisonWithForward(loadSteps, Fgps_inverse, Fgps_forward, Fgps_biased, Fgps_reconst, runName, t_min, t_max)
     
     Fgp1_inv=Fgps_inverse[1,:]
     Fgp2_inv=Fgps_inverse[2,:]
@@ -197,6 +197,9 @@ function plotComparisonWithForward(loadSteps, Fgps_inverse, Fgps_forward, Fgps_b
     Fgp1_bias=Fgps_biased[1,:]
     Fgp2_bias=Fgps_biased[2,:]
     Fgp3_bias=Fgps_biased[3,:]
+    Fgp1_rec=Fgps_reconst[1,:]
+    Fgp2_rec=Fgps_reconst[2,:]
+    Fgp3_rec=Fgps_reconst[3,:]
 
 
     fig2      = Figure(size = (1000,700))
@@ -224,35 +227,41 @@ function plotComparisonWithForward(loadSteps, Fgps_inverse, Fgps_forward, Fgps_b
     
     ax1 = Axis(fig4[1,1], ylabel="Line tension [kN]", xlabel="Time [s]", ylabelsize=20, xlabelsize=20)
     lines!(ax1, loadSteps, Fgp1_for/1e3,                                color = :red,             linestyle = :dot   ,  label="Forward [downwind]")
-    lines!(ax1, loadSteps, Fgp1_bias/1e3,                                color = :orange,             linestyle = :dash   ,  label="Measured [downwind]")
+    lines!(ax1, loadSteps, Fgp1_bias/1e3,                     color = :orange,   linestyle = :dash       ,    label="Measured input [downwind]")
+    lines!(ax1, loadSteps, Fgp1_rec/1e3,                     color = :orange,   linestyle = :solid       ,    label="Measured reconstructed [downwind]")
     lines!(ax1, loadSteps, Fgp1_inv/1e3,                                color = :red,             linestyle = :solid ,    label="Inverse [downwind]")
-    axislegend(position=:rb)
+    axislegend(position=:rt)
     ax2 = Axis(fig4[2,1], ylabel="Line tension [kN]", xlabel="Time [s]", ylabelsize=20, xlabelsize=20)
-    lines!(ax2, loadSteps, Fgp2_for/1e3,                                color = :blue,             linestyle = :dot   ,  label="Forward [upwind right]")
-    lines!(ax2, loadSteps, Fgp2_bias/1e3,                                color = :purple,             linestyle = :dash   ,  label="Measured [upwind right]")
-    lines!(ax2, loadSteps, Fgp2_inv/1e3,                                color = :blue,             linestyle = :solid ,    label="Inverse [upwind right]")
-    lines!(ax2, loadSteps, Fgp3_for/1e3,                                color = :green,            linestyle = :dot   ,   label="Forward [upwind left]")
-    lines!(ax2, loadSteps, Fgp3_bias/1e3,                                color = :grey,            linestyle = :dash   ,   label="Measured [upwind left]")
-    lines!(ax2, loadSteps, Fgp3_inv/1e3,                                color = :green,            linestyle = :solid ,     label="Inverse [upwind left]")
+    lines!(ax2, loadSteps, Fgp2_for/1e3,                                color = :blue,             linestyle = :dot   ,  label="Forward [upwind]")
+    lines!(ax2, loadSteps, Fgp2_bias/1e3,                                color = :purple,             linestyle = :dash   ,   label="Measured input [downwind]")
+    lines!(ax2, loadSteps, Fgp2_rec/1e3,                                color = :purple,             linestyle = :solid   , label="Measured reconstructed [downwind]")
+    lines!(ax2, loadSteps, Fgp2_inv/1e3,                                color = :blue,             linestyle = :solid ,    label="Inverse [upwind]")
+
+    # lines!(ax2, loadSteps, Fgp2_for/1e3,                                color = :blue,             linestyle = :dot   ,  label="Forward [upwind right]")
+    # lines!(ax2, loadSteps, Fgp2_bias/1e3,                                color = :purple,             linestyle = :dash   ,  label="Measured [upwind right]")
+    # lines!(ax2, loadSteps, Fgp2_inv/1e3,                                color = :blue,             linestyle = :solid ,    label="Inverse [upwind right]")
+    # lines!(ax2, loadSteps, Fgp3_for/1e3,                                color = :green,            linestyle = :dot   ,   label="Forward [upwind left]")
+    # lines!(ax2, loadSteps, Fgp3_bias/1e3,                                color = :grey,            linestyle = :dash   ,   label="Measured [upwind left]")
+    # lines!(ax2, loadSteps, Fgp3_inv/1e3,                                color = :green,            linestyle = :solid ,     label="Inverse [upwind left]")
     axislegend(position=:rb)
     
     minFgp3_interp = linear_interpolation(
     loadSteps,
-    min.(Fgp2_bias,Fgp2_for,Fgp2_inv,Fgp3_bias,Fgp3_for,Fgp3_inv)
+    min.(Fgp2_bias,Fgp2_for,Fgp2_inv,Fgp3_bias,Fgp3_for,Fgp3_inv, Fgp2_rec, Fgp3_rec)
 
     )
     minFgp1_interp = linear_interpolation(
     loadSteps,
-    min.(Fgp1_bias,Fgp1_for,Fgp1_inv)
+    min.(Fgp1_bias,Fgp1_for,Fgp1_inv,Fgp1_rec)
     )
     maxFgp3_interp = linear_interpolation(
     loadSteps,
-    max.(Fgp2_bias,Fgp2_for,Fgp2_inv,Fgp3_bias,Fgp3_for,Fgp3_inv)
+    max.(Fgp2_bias,Fgp2_for,Fgp2_inv,Fgp3_bias,Fgp3_for,Fgp3_inv, Fgp2_rec, Fgp3_rec)
 
     )
     maxFgp1_interp = linear_interpolation(
     loadSteps,
-    max.(Fgp1_bias,Fgp1_for,Fgp1_inv)
+    max.(Fgp1_bias,Fgp1_for,Fgp1_inv,Fgp1_rec)
     )
     Δt =  loadSteps[2] - loadSteps[1]
     xlims!(ax1, t_min, t_max)
