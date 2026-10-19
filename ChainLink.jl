@@ -160,15 +160,14 @@ end;
     return fᵢ,fe
 end;
 
-vec3(v,ind) = SVector{3}(v[i] for i∈ind);
+vec3(v,ind1,ind2,ind3) = SVector{3,eltype(v)}(v[ind1],v[ind2],v[ind3]);
 
 # Define now the residual function for the ChainLink element.
 @espy function Muscade.residual(o::ChainLink{Mat,Udof},   X,U,A,t,SP,dbg) where{Mat,Udof}
     # Obtain motions (i.e. including velocity and accelerations) from X
-    P,ND    = constants(X),length(X)
-    x_      = motion{P}(X)
+    P,ND,x_      = motion(X)
     # Motions of the nodes, center of the element
-    uᵧ₁,uᵧ₂   = vec3(x_,1:3), vec3(x_,4:6) 
+    uᵧ₁,uᵧ₂   = vec3(x_,1,2,3), vec3(x_,4,5,6) 
     c        = o.cₘ + 0.5*(uᵧ₁+uᵧ₂) 
     # Element direction and length
     tg      = o.tgₘ + uᵧ₂ - uᵧ₁

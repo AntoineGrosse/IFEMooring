@@ -20,9 +20,9 @@ g = 9.81
 @show Ca0 = 1e-2
 @show Ca1 = 1e10
 # Parameters
-@show bias_err      = 10* 10e3  /2.4681e09
+@show bias_err      = 00* 10e3  /2.4681e09
 @show scaling_err   = 00* 0.01
-@show std_noise     = 10* 10e3   /2.4681e09 # STD of the gaussian noise to apply to the measurement
+@show std_noise     = 00* 10e3   /2.4681e09 # STD of the gaussian noise to apply to the measurement
 @show maxΔx = 1e-5
 @show maxΔa = 1e-5
 @show maxiterinv = 12
@@ -39,19 +39,38 @@ inverseLoadSteps = (0:Δtᵢₙᵥ:(nsteps-1)*Δtᵢₙᵥ) .+ eps()
         t2=1, 
         t3=1, 
 
-        λat1=1e7,
-        λat2=1e6,
-        λat3=1e7,
+        λat1=1,
+        λat2=1,
+        λat3=1,
 
-        λpt1=1e7,
-        λpt2=1e6,
-        λpt3=1e7
+        λpt1=1,
+        λpt2=1,
+        λpt3=1
     ),
     A=(
-        γ₀=1e-4,
-        γ₁=1e-1
+        γ₀=1,
+        γ₁=1
     ),
 )
+# @show scale = (
+#     X=(
+#         t1=1, 
+#         t2=1, 
+#         t3=1, 
+
+#         λat1=1e7,
+#         λat2=1e6,
+#         λat3=1e7,
+
+#         λpt1=1e7,
+#         λpt2=1e6,
+#         λpt3=1e7
+#     ),
+#     A=(
+#         γ₀=1e-4,
+#         γ₁=1e-1
+#     ),
+# )
 @show Λscale = 1e0 # The bigger the more Importance given to Residual over Costs, so the more importance given to Physical Model on Data Model 
 
 # Script booleans
@@ -69,9 +88,9 @@ inverseLoadSteps = (0:Δtᵢₙᵥ:(nsteps-1)*Δtᵢₙᵥ) .+ eps()
 @show boolStrainCost = true
 
 # Plot booleans
-boolPlotStatic = false
-boolAnimateForward = true
-boolAnimateInverse = true
+boolPlotStatic = true
+boolAnimateForward = false
+boolAnimateInverse = false
 boolPlotComparisonSIMA = false
 
 # Loss functions
@@ -157,8 +176,10 @@ azimuths = [
 ]
 
 # Loading inputs
-file_path = "input\\test_wo_20years.csv"
-file_path_w = "input\\test_w_20years.csv"
+file_path = "input\\test_wo.csv"
+file_path_w = "input\\test_w.csv"
+# file_path = "input\\test_wo_20years.csv"
+# file_path_w = "input\\test_w_20years.csv"
 df = CSV.read(file_path, DataFrame; delim=',')
 df_w = CSV.read(file_path_w, DataFrame; delim=',')
 firstX1 = df[:,"Xfairlead1 [m]"][1]
@@ -259,6 +280,8 @@ println("======= Forward solve =======")
         addelement!(model,DofConstraint,[topNodes[iline]],xinod=(1,),xfield=(:t2,), λinod=(1,), λclass=:X, λfield=(:λpt2,), gap=MotionTop, gargs = (yMotion,), mode=equal)
         addelement!(model,DofConstraint,[topNodes[iline]],xinod=(1,),xfield=(:t3,), λinod=(1,), λclass=:X, λfield=(:λpt3,), gap=MotionTop, gargs = (zMotion,), mode=equal);
     end
+
+    plotStaticStates("",1, initialstate, [initialstate], "figs/initial.png")
 
     # Forward solve
     initialstate = initialize!(model)
