@@ -226,16 +226,17 @@ function plotComparisonWithForward(loadSteps, Fgps_inverse, Fgps_forward, Fgps_b
     fig4      = Figure(size = (1000,700))
     
     ax1 = Axis(fig4[1,1], ylabel="Line tension [kN]", xlabel="Time [s]", ylabelsize=20, xlabelsize=20)
-    lines!(ax1, loadSteps, Fgp1_for/1e3,                                color = :red,             linestyle = :dot   ,  label="Forward [downwind]")
-    lines!(ax1, loadSteps, Fgp1_bias/1e3,                     color = :orange,   linestyle = :dash       ,    label="Measured input [downwind]")
-    lines!(ax1, loadSteps, Fgp1_rec/1e3,                     color = :orange,   linestyle = :solid       ,    label="Measured reconstructed [downwind]")
-    lines!(ax1, loadSteps, Fgp1_inv/1e3,                                color = :red,             linestyle = :solid ,    label="Inverse [downwind]")
-    axislegend(position=:rt)
+    lines!(ax1, loadSteps, Fgp1_for/1e3,                                color = :red,             linestyle = :dot   ,      label=L"\textbf{True [downwind]}")
+    lines!(ax1, loadSteps, Fgp1_bias/1e3,                               color = :orange,   linestyle = :dash       ,        label=L"\textbf{Measured [downwind]}")
+    lines!(ax1, loadSteps, Fgp1_rec/1e3,                                color = :orange,   linestyle = :solid       ,       label=L"\textbf{Estimated with bias } \mathbf{(\hat{T} + \hat{b}_T)} \textbf{ [downwind]}")
+    lines!(ax1, loadSteps, Fgp1_inv/1e3,                                color = :red,             linestyle = :solid ,      label=L"\textbf{Estimated without bias } \mathbf{(\hat{T})} \textbf{ [downwind]}")
+    axislegend(position=:rt, labelsize=17)
+    
     ax2 = Axis(fig4[2,1], ylabel="Line tension [kN]", xlabel="Time [s]", ylabelsize=20, xlabelsize=20)
-    lines!(ax2, loadSteps, Fgp2_for/1e3,                                color = :blue,             linestyle = :dot   ,  label="Forward [upwind]")
-    lines!(ax2, loadSteps, Fgp2_bias/1e3,                                color = :purple,             linestyle = :dash   ,   label="Measured input [downwind]")
-    lines!(ax2, loadSteps, Fgp2_rec/1e3,                                color = :purple,             linestyle = :solid   , label="Measured reconstructed [downwind]")
-    lines!(ax2, loadSteps, Fgp2_inv/1e3,                                color = :blue,             linestyle = :solid ,    label="Inverse [upwind]")
+    lines!(ax2, loadSteps, Fgp2_for/1e3,                                color = :blue,             linestyle = :dot   ,     label=L"\textbf{True [upwind]}")
+    lines!(ax2, loadSteps, Fgp2_bias/1e3,                               color = :purple,             linestyle = :dash   ,  label=L"\textbf{Measured [upwind]}")
+    lines!(ax2, loadSteps, Fgp2_rec/1e3,                                color = :purple,             linestyle = :solid   , label=L"\textbf{Estimated with bias } \mathbf{(\hat{T} + \hat{b}_T)} \textbf{ [upwind]}")
+    lines!(ax2, loadSteps, Fgp2_inv/1e3,                                color = :blue,             linestyle = :solid ,     label=L"\textbf{Estimated without bias } \mathbf{(\hat{T})} \textbf{ [upwind]}")
 
     # lines!(ax2, loadSteps, Fgp2_for/1e3,                                color = :blue,             linestyle = :dot   ,  label="Forward [upwind right]")
     # lines!(ax2, loadSteps, Fgp2_bias/1e3,                                color = :purple,             linestyle = :dash   ,  label="Measured [upwind right]")
@@ -243,7 +244,7 @@ function plotComparisonWithForward(loadSteps, Fgps_inverse, Fgps_forward, Fgps_b
     # lines!(ax2, loadSteps, Fgp3_for/1e3,                                color = :green,            linestyle = :dot   ,   label="Forward [upwind left]")
     # lines!(ax2, loadSteps, Fgp3_bias/1e3,                                color = :grey,            linestyle = :dash   ,   label="Measured [upwind left]")
     # lines!(ax2, loadSteps, Fgp3_inv/1e3,                                color = :green,            linestyle = :solid ,     label="Inverse [upwind left]")
-    axislegend(position=:rb)
+    axislegend(position=:rb, labelsize=17)
     
     minFgp3_interp = linear_interpolation(
     loadSteps,

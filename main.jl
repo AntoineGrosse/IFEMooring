@@ -70,9 +70,9 @@ inverseLoadSteps = (0:Δtᵢₙᵥ:(nsteps-1)*Δtᵢₙᵥ) .+ eps()
 
 # Plot booleans
 boolPlotStatic = false
-boolAnimateForward = false
-boolAnimateInverse = false
-boolPlotComparisonSIMA = true
+boolAnimateForward = true
+boolAnimateInverse = true
+boolPlotComparisonSIMA = false
 
 # Loss functions
 δ = 1e-2 # For Huber loss
@@ -157,8 +157,8 @@ azimuths = [
 ]
 
 # Loading inputs
-file_path = "input\\test_wo.csv"
-file_path_w = "input\\test_w.csv"
+file_path = "input\\test_wo_20years.csv"
+file_path_w = "input\\test_w_20years.csv"
 df = CSV.read(file_path, DataFrame; delim=',')
 df_w = CSV.read(file_path_w, DataFrame; delim=',')
 firstX1 = df[:,"Xfairlead1 [m]"][1]
@@ -211,6 +211,7 @@ prescribed_disp_interp = [
 ##########################################
 println("======= Forward solve =======")
 @time begin
+    #TODO Faire des structures , empacter tout ca
     topNodes = Vector{Muscade.NodID}(undef,nlines)
     nodeLists  =   Vector{Vector{Vector{Muscade.NodID}}}(undef,nlines*nseg)
     elementLists = Vector{Vector{Muscade.EleID}}(undef,nlines)
