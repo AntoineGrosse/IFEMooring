@@ -1,6 +1,7 @@
 # # ChainLink element
 
 using StaticArrays, LinearAlgebra, Muscade
+@functor with() g̃_default(t) = SVector(0.,0.,1.); 
 
 """
     AxisymmetricChainLinkCrossSection 
@@ -33,19 +34,19 @@ bar             = ChainLink(elnod;mat)
 
 See also: [`ChainLink`](@ref), [`EulerBeam3D`](@ref)
 """
-struct AxisymmetricChainLinkCrossSection
+struct AxisymmetricChainLinkCrossSection{Tg̃}
     EA  :: 𝕣 # Axial stiffness [N]
     μ   :: 𝕣 # Mass per unit length [kg/m]
     w   :: 𝕣 # Weight per unit length [N/m]
+    g̃   :: Tg̃ # a functor  
     Caₜ :: 𝕣 # Tangential added mass per unit length [kg/m]
     Clₜ :: 𝕣 # Tangential linear damping coefficient per unit length [N/m/(m/s)]
     Cqₜ :: 𝕣 # Tangential quadratic damping coefficient per unit length [N/m/(m/s)^2], for example from drag
     Caₙ :: 𝕣 # Normal added mass per unit length [kg/m] 
     Clₙ :: 𝕣 # Normal linear damping coefficient per unit length [N/m/(m/s)] 
     Cqₙ :: 𝕣 # Normal quadratic damping coefficient per unit length [N/m/(m/s)^2], 
-    # TODO: add gravity field to bar properties (time dependent), and use it to compute the weight. This to enable static analyses. 
 end
-AxisymmetricChainLinkCrossSection(;EA,μ,w=0.,Caₜ=0.,Clₜ=0.,Cqₜ=0.,Caₙ=0.,Clₙ=0.,Cqₙ=0.) = AxisymmetricChainLinkCrossSection(EA,μ,w,Caₜ,Clₜ,Cqₜ,Caₙ,Clₙ,Cqₙ);
+AxisymmetricChainLinkCrossSection(;EA,μ,w=0.,g̃=g̃_default,Caₜ=0.,Clₜ=0.,Cqₜ=0.,Caₙ=0.,Clₙ=0.,Cqₙ=0.) = AxisymmetricChainLinkCrossSection(EA,μ,w,g̃,Caₜ,Clₜ,Cqₜ,Caₙ,Clₙ,Cqₙ);
 
 const ngp        = 4 # Number of Gauss points
 const ndim       = 3 # Number of dimensions
@@ -140,8 +141,8 @@ end;
     v,a      = ∂1(x),∂2(x)    
     # Inertia force
     fi      = o.μ * a
-    # Weight (applied progressively from t=-10 to t=-5)
-    fw =  SVector(0,0,(min(t,-5.)+10)/5 * o.w) 
+    # Weight 
+    fw = - o.w * o.g̃(t) 
     # Added mass
     aₜ = a ∘₁ δ         # Tangential acceleration (scalar)
     aₙ = a - aₜ * δ     # Normal acceleration (vector)

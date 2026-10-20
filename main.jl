@@ -281,10 +281,12 @@ println("======= Forward solve =======")
         addelement!(model,DofConstraint,[topNodes[iline]],xinod=(1,),xfield=(:t3,), λinod=(1,), λclass=:X, λfield=(:λpt3,), gap=MotionTop, gargs = (zMotion,), mode=equal);
     end
 
-    plotStaticStates("",1, initialstate, [initialstate], "figs/initial.png")
-
+    
     # Forward solve
     initialstate = initialize!(model)
+    
+    plotStaticStates("",1, initialstate, [initialstate], "figs/initial.png")
+    
     staticStates = solve(SweepX{0}; initialstate, time=staticLoadSteps, verbose=false, maxΔx=1e-6, maxiter=60)
 
     if boolPlotStatic

@@ -42,18 +42,15 @@ function MeshLineGauge(model,rawNode,azimuth,eltype,elgaugetype,xSection,segLeng
             elementList=vcat(elementList,addelement!(model,eltype,mesh;                         mat=xSection[segid]))
             nodeList[segid] = nodid
         end
+        # Populate list for last segment
+        nodid         = addnode!(model,nodeCoord[nseg][2:end-1,:])
+        firstNode[nseg]    = lastNode[nseg-1]
+        lastNode[nseg]     = addnode!(model, bottomNodeCoord)
+        mesh          = hcat(nodid[1:(nnodes[nseg]-3)],nodid[2:(nnodes[nseg]-2)])
+        elementList=vcat(elementList,addelement!(model,eltype,[firstNode[nseg],nodid[1]];  mat=xSection[nseg]))
+        elementList=vcat(elementList,addelement!(model,eltype,mesh;                        mat=xSection[nseg]))
+        elementList=vcat(elementList,addelement!(model,eltype,[nodid[end],lastNode[nseg]];     mat=xSection[nseg]))
+        nodeList[nseg] = vcat(nodid,lastNode[nseg])
     end
-
-    # Populate list for last segment
-    nodid         = addnode!(model,nodeCoord[nseg][2:end-1,:])
-    firstNode[nseg]    = lastNode[nseg-1]
-    lastNode[nseg]     = addnode!(model, bottomNodeCoord)
-    mesh          = hcat(nodid[1:(nnodes[nseg]-3)],nodid[2:(nnodes[nseg]-2)])
-    elementList=vcat(elementList,addelement!(model,eltype,[firstNode[nseg],nodid[1]];  mat=xSection[nseg]))
-    elementList=vcat(elementList,addelement!(model,eltype,mesh;                        mat=xSection[nseg]))
-    elementList=vcat(elementList,addelement!(model,eltype,[nodid[end],lastNode[nseg]];     mat=xSection[nseg]))
-    nodeList[nseg] = vcat(nodid,lastNode[nseg])
-
-
     return nodeList,elementList,aNode,nodeCoord
 end 

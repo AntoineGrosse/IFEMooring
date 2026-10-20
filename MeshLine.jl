@@ -24,11 +24,11 @@ function MeshLine(model, rawNode, azimuth,eltype,xSection,segLength,nel)
     # Populate lists for Segment 1
     nodid       = addnode!(model,nodeCoord[1][2:end,:])
     mesh        = hcat(nodid[1:nnodes[1]-2],nodid[2:nnodes[1]-1])
-    elementList = addelement!(model,eltype,[topNode.ID,nodid[1]];     mat=xSection[1])
+    elementList = addelement!(model,eltype,[topNode.nodID,nodid[1]];     mat=xSection[1])
     elementList = vcat(elementList,addelement!(model,eltype,mesh;       mat=xSection[1]))
-    firstNode[1] = topNode.ID
+    firstNode[1] = topNode.nodID
     lastNode[1]  = nodid[size(nodid,1)]
-    nodeList[1]  =  vcat(topNode.ID, nodid);
+    nodeList[1]  =  vcat(topNode.nodID, nodid);
 
     # Populate list for the intermediate segments (if they exist)
     if nseg>2
@@ -41,18 +41,15 @@ function MeshLine(model, rawNode, azimuth,eltype,xSection,segLength,nel)
             elementList=vcat(elementList,addelement!(model,eltype,mesh;                         mat=xSection[segid]))
             nodeList[segid] = nodid
         end
+        # Populate list for last segment
+        nodid         = addnode!(model,nodeCoord[nseg][2:end-1,:])
+        firstNode[nseg]    = lastNode[nseg-1]
+        lastNode[nseg]     = addnode!(model, bottomNodeCoord)
+        mesh          = hcat(nodid[1:(nnodes[nseg]-3)],nodid[2:(nnodes[nseg]-2)])
+        elementList=vcat(elementList,addelement!(model,eltype,[firstNode[nseg],nodid[1]];  mat=xSection[nseg]))
+        elementList=vcat(elementList,addelement!(model,eltype,mesh;                        mat=xSection[nseg]))
+        elementList=vcat(elementList,addelement!(model,eltype,[nodid[end],lastNode[nseg]];     mat=xSection[nseg]))
+        nodeList[nseg] = vcat(nodid,lastNode[nseg])
     end
-
-    # Populate list for last segment
-    nodid         = addnode!(model,nodeCoord[nseg][2:end-1,:])
-    firstNode[nseg]    = lastNode[nseg-1]
-    lastNode[nseg]     = addnode!(model, bottomNodeCoord)
-    mesh          = hcat(nodid[1:(nnodes[nseg]-3)],nodid[2:(nnodes[nseg]-2)])
-    elementList=vcat(elementList,addelement!(model,eltype,[firstNode[nseg],nodid[1]];  mat=xSection[nseg]))
-    elementList=vcat(elementList,addelement!(model,eltype,mesh;                        mat=xSection[nseg]))
-    elementList=vcat(elementList,addelement!(model,eltype,[nodid[end],lastNode[nseg]];     mat=xSection[nseg]))
-    nodeList[nseg] = vcat(nodid,lastNode[nseg])
-
-
     return nodeList,elementList,nodeCoord
 end 
