@@ -22,7 +22,7 @@ cd(currentDir)
 
 # Load steps
 staticLoadSteps = (-10:0.1:0)
-time = (0 + eps():0.01:5)
+forwardTimesteps = (0 + eps():0.01:20)
 
 # scaling
 #==NONE==#
@@ -50,15 +50,24 @@ loss_function = quadra
 #==DEFINEDBYSCRIPT==#
 
 # Segments
-nel = [5]
+# nel = [5, 23, 12, 7]
+# segLength = [150., 414., 250., 150.]
+# xSection = [x1_mat, x2_mat, x2_mat, x1_mat]
+# nseg = length(nel)
+nel = [20]
 segLength = [150.]
 xSection = [x1_mat]
 nseg = length(nel)
 
 # Geometry
-waterDepth = 50.
+# waterDepth = 200.
+# fairleadDepth = 10.
+# offsetHorizontal = 1000. - sum(segLength) - 58.75
+# offsetDownwards = -waterDepth + fairleadDepth
+# prestrechStaticAnalysis = sum(segLength) * 0.01
+waterDepth = 30.
 fairleadDepth = 10.
-offsetHorizontal = -10
+offsetHorizontal = -5
 offsetDownwards = -waterDepth + fairleadDepth
 prestrechStaticAnalysis = sum(segLength) * 0.01
 
@@ -80,12 +89,12 @@ azimuths = [
 
 # Prescribed displacements
 #------------------------------------------
-xMotion1(t) = 0.
-yMotion1(t) = 0.
-zMotion1(t) = 0.
-# xMotion1(t) = sin(t)
-# yMotion1(t) = sin(t)
-# zMotion1(t) = sin(t)
+# xMotion1(t) = 0.
+# yMotion1(t) = 0.
+# zMotion1(t) = 0.
+xMotion1(t) = exp(min((t-0.5)/0.001,0)) * 3 * sin(0.5 * t)
+yMotion1(t) = exp(min((t-0.5)/0.001,0)) * 3 * sin(0.3 * t)
+zMotion1(t) = exp(min((t-0.5)/0.001,0)) * 1 * sin(0.1 * t)
 
 
 prescribed_disp_interp = [
@@ -107,8 +116,7 @@ println("======= Forward solve =======")
     elementLists = Vector{Vector{Muscade.EleID}}(undef,nlines)
     anodeLists = Vector{Muscade.NodID}(undef,nlines)
 
-    println("TOUT VA BIEN DEF LISTES")
-    println(nlines)
+    println("TOUT VA BIEN : DEF LISTES")
 
     model = Model(:testline)
     for iline in 1:nlines
@@ -132,6 +140,7 @@ println("======= Forward solve =======")
 
         # Soil contact
         segnumsoil = nseg
+        Kv = k_seabed_SIMA * 0.5 * segLength[end]/nel[end]
         [addelement!(model,SoilContact,[nodeLists[iline][segnumsoil][idxNod]],z₀=offsetDownwards,Kh=0.0,Kv=Kv,Ch=0.,Cv=0.)  for idxNod = 1:length(nodeLists[iline][segnumsoil])]
         
         # X Constraints : Top
@@ -143,13 +152,26 @@ println("======= Forward solve =======")
     end
 
     println("TOUT VA BIEN : DEF MODEL AND ALL")
-
+    
     # Forward solve
     initialstate = initialize!(model)
-    plotStaticStates("",1, initialstate, [initialstate], "figs/initial.png")
-    staticStates = solve(SweepX{0}; initialstate, time=staticLoadSteps, verbose=false, maxΔx=1e-6, maxiter=60)
-
-
-    plotStaticStates("",length(staticLoadSteps), initialstate, staticStates, "figs/static.png")
+    statesFWD_static = solve(SweepX{0}; initialstate, time=staticLoadSteps, verbose=false, maxΔx=1e-6, maxiter=60)
+    
+    plotStaticStates("",length(staticLoadSteps), initialstate, statesFWD_static, "figs/static.png")
+    
+    println("TOUT VA BIEN : STATIC ANALYSIS")
+    
+    statesFWD_dynamic = solve(SweepX{2};
+    initialstate=statesFWD_static[end], 
+    time=forwardTimesteps, 
+    maxΔx=1e-6, 
+    verbose=false, 
+    maxiter=100,
+    β=1/3.,γ=0.605, # Unconditionally stable for : γ >= .5 &&  2 β >= γ)
+    )
+    
+    animateStates("Animation Forward analysis", 1:10:length(forwardTimesteps), 1., 1., waterDepth, statesFWD_dynamic, "figs/animationFWD_benchmark.mp4")
+    
+    println("TOUT VA BIEN : DYNAMIC ANALYSIS")
 
 end

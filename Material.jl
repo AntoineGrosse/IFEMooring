@@ -1,7 +1,7 @@
 # Constants
 g = -9.81
 ρ = 1025.
-@show Kv = 14000.
+@show k_seabed_SIMA = 14000 # N / m^2
 
 # Define parameters for cross-section 1 (170mm R4 chain)
 x1_D        = 0.306                              # Outer diameter [m]
@@ -10,7 +10,7 @@ x1_Area = (x1_D)^2*π/4                          # Inner area [m^2]
 x1_ρₛ       =   7859.45                          # Steel denstiy [kg/m^3]
 x1_EA       =   2.4681e09                          # Axial stiffness [N]
 x1_μ        =   x1_Area*x1_ρₛ                   # Mass per unit length [m]
-x1_w        =   x1_μ*g - π*x1_D^2/4*ρ*g          # Weight per unit length [N/m]
+@show x1_w        =   x1_μ*g - π*x1_D^2/4*ρ*g          # Weight per unit length [N/m]
 x1_Caₜ      =   1.0 *         ρ * π*x1_Dh^2/4    # Transverse added mass coefficients [N/m/(m/s^2)]
 x1_Caₙ      =   1.4 *         ρ * π*x1_Dh^2/4   # Normal added mass coefficients [N/m/(m/s^2)]
 x1_Cqₜ      =   0.5 *   0.5 * ρ * x1_Dh          # Transverse drag coefficients [N/m/(m/s)^2]
@@ -26,7 +26,7 @@ x2_Area     = (x2_D)^2*π/4                      # Inner area [m^2]
 x2_ρₛ       =   1222.32                          # Steel denstiy [kg/m^3]
 x2_EA       =   3.44e08                          # Axial stiffness [N]
 x2_μ        =   x2_Area*x2_ρₛ                   # Mass per unit length [m]
-x2_w        =   x2_μ*g - π*x2_D^2/4*ρ*g          # Weight per unit length [N/m]
+@show x2_w        =   x2_μ*g - π*x2_D^2/4*ρ*g          # Weight per unit length [N/m]
 x2_Caₜ      =   0.0 *         ρ * π*x2_Dh^2/4    # Transverse added mass coefficients [N/m/(m/s^2)]
 x2_Caₙ      =   1.0 *         ρ * π*x2_Dh^2/4
 x2_Cqₜ      =   0.0 *   0.5 * ρ * x2_Dh          # Transverse drag coefficients [N/m/(m/s)^2]

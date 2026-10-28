@@ -2,7 +2,7 @@ using Muscade, GLMakie
 
 function animateStates(title, loadStepsIterator, azimuth_deg, elevation_deg, waterDepth, vec_states, savepath)
 # Forward animation
-    fig_anim   = Figure(size = (2000,1000))
+    fig_anim   = Figure(size = (2200,1000))
     ax = Axis3(fig_anim[1,1],
         xgridvisible=false,ygridvisible=false,zgridvisible=false,
         xlabelsize=40,ylabelsize=40,zlabelsize=40,
