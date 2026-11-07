@@ -123,8 +123,8 @@ println("======= Forward solve =======")
         # Line
         coordTopNode = topInitCoord[iline]
         topNodes[iline] = addnode!(model,coordTopNode)
-        # nodeLists[iline],elementLists[iline],anodeLists[iline] = MeshLineGauge(model, topNodes[iline], local_azimuth, ChainLink, BiasedStrainGauge,xSection,segLength,nel)
-        nodeLists[iline],elementLists[iline] = MeshLine(model, topNodes[iline], local_azimuth, ChainLink, xSection,segLength,nel)
+        nodeLists[iline],elementLists[iline],anodeLists[iline] = MeshLineGauge(model, topNodes[iline], local_azimuth, ChainLink, BiasedStrainGauge,xSection,segLength,nel)
+        # nodeLists[iline],elementLists[iline] = MeshLine(model, topNodes[iline], local_azimuth, ChainLink, xSection,segLength,nel)
 
         # X Constraints : Anchor
         @functor with(offsetHorizontal,prestrechStaticAnalysis,staticFunction)   xMotionBottom(x,t,local_azimuth)  = SVector{1}([1.0 * (x[1] - cos(local_azimuth)*  (prestrechStaticAnalysis +  staticFunction(t)*( offsetHorizontal  - prestrechStaticAnalysis )))])

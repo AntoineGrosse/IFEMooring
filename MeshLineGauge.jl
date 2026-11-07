@@ -1,5 +1,4 @@
 function MeshLineGauge(model,rawNode,azimuth,eltype,elgaugetype,xSection,segLength,nel)
-    # Assumes at least 2 segments
     # For each segment, build a vector of (matrices describing node coordinates)
     # Need to pass element arguments (orient2 for EulerBeam3D for example)
     topNode = model.nod[rawNode]
@@ -32,7 +31,7 @@ function MeshLineGauge(model,rawNode,azimuth,eltype,elgaugetype,xSection,segLeng
     nodeList[1]  =  vcat(topNode.nodID, nodid);
 
     # Populate list for the intermediate segments (if they exist)
-    if nseg>2
+    if nseg>1
         for segid ∈ 2:nseg-1
             local nodid         = addnode!(model,nodeCoord[segid][2:end,:])
             firstNode[segid]    = lastNode[segid-1]

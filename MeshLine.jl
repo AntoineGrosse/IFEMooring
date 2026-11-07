@@ -1,5 +1,4 @@
 function MeshLine(model, rawNode, azimuth,eltype,xSection,segLength,nel)
-    # Assumes at least 2 segments
     # For each segment, build a vector of (matrices describing node coordinates)
     # Need to pass element arguments (orient2 for EulerBeam3D for example)
     topNode = model.nod[rawNode]
