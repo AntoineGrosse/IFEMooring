@@ -3,7 +3,8 @@ using Muscade: equal
 include("BiasedStrainGauge.jl")
 include("MeshLine.jl")
 include("MeshLineGauge.jl")
-include("ChainLink.jl")
+# include("ChainLink.jl")
+include("ChainLink_new.jl")
 include("PostProcessHelpers.jl")
 include("Material.jl")
 currentDir = @__DIR__
@@ -21,8 +22,13 @@ cd(currentDir)
 @show maxiterinv = 12
 
 # Load steps
-staticLoadSteps = (-10:0.1:0)
-forwardTimesteps = (0 + eps():0.01:20)
+staticLoadSteps = (-20:0.01:0)
+forwardTimesteps = (0:0.01:20) .+ eps()
+function ramp(t1,t2,slope,t)
+    return max(0,t-t1)*slope - max(0,t-t2)*slope
+end
+staticFunction(t) = ramp(-10., 0., 1/10, t)
+gravityFunction(t) = ramp(-20., -10., 1/10, t)
 
 # scaling
 #==NONE==#
@@ -47,31 +53,24 @@ mse(x) = (x⋅x/length(x))
 loss_function = quadra
 
 # Materials
-#==DEFINEDBYSCRIPT==#
+@functor with() g̃_(t) = SVector(0.,0.,1. * gravityFunction(t));
+x1_mat         = AxisymmetricChainLinkCrossSection(EA=x1_EA, μ=x1_μ, w=x1_w, g̃=g̃_, Caₜ=x1_Caₜ, Clₜ=x1_Clₜ, Cqₜ=x1_Cqₜ, Caₙ=x1_Caₙ, Clₙ=x1_Clₙ, Cqₙ=x1_Cqₙ)
+x2_mat         = AxisymmetricChainLinkCrossSection(EA=x2_EA, μ=x2_μ, w=x2_w, g̃=g̃_, Caₜ=x2_Caₜ, Clₜ=x2_Clₜ, Cqₜ=x2_Cqₜ, Caₙ=x2_Caₙ, Clₙ=x2_Clₙ, Cqₙ=x2_Cqₙ)
 
 # Segments
-# nel = [5, 23, 12, 7]
-# segLength = [150., 414., 250., 150.]
-# xSection = [x1_mat, x2_mat, x2_mat, x1_mat]
-# nseg = length(nel)
-nel = [20]
-segLength = [150.]
-xSection = [x1_mat]
+nel = [5, 23, 12, 7]
+segLength = [150., 414., 250., 150.]
+xSection = [x1_mat, x2_mat, x2_mat, x1_mat]
 nseg = length(nel)
 
 # Geometry
-# waterDepth = 200.
-# fairleadDepth = 10.
-# offsetHorizontal = 1000. - sum(segLength) - 58.75
-# offsetDownwards = -waterDepth + fairleadDepth
-# prestrechStaticAnalysis = sum(segLength) * 0.01
-waterDepth = 30.
+waterDepth = 200.
 fairleadDepth = 10.
-offsetHorizontal = -5
+offsetHorizontal = 1000. - sum(segLength) - 58.75
 offsetDownwards = -waterDepth + fairleadDepth
-prestrechStaticAnalysis = sum(segLength) * 0.01
+prestrechStaticAnalysis = sum(segLength) * 0.001
 
-initX1 = 5
+initX1 = 58.75
 initY1 = 0.
 initZ1 = -fairleadDepth
 
@@ -112,7 +111,7 @@ println("======= Forward solve =======")
 @time begin
     #TODO Faire des structures , empacter tout ca
     topNodes = Vector{Muscade.NodID}(undef,nlines)
-    nodeLists  =   Vector{Vector{Vector{Muscade.NodID}}}(undef,nlines*nseg)
+    nodeLists  =   Vector{Vector{Vector{Muscade.NodID}}}(undef,nlines)
     elementLists = Vector{Vector{Muscade.EleID}}(undef,nlines)
     anodeLists = Vector{Muscade.NodID}(undef,nlines)
 
@@ -128,15 +127,23 @@ println("======= Forward solve =======")
         nodeLists[iline],elementLists[iline] = MeshLine(model, topNodes[iline], local_azimuth, ChainLink, xSection,segLength,nel)
 
         # X Constraints : Anchor
-        @functor with(offsetHorizontal,prestrechStaticAnalysis)   xMotionBottom(x,t,local_azimuth)  = SVector{1}([1.0 * (x[1] - cos(local_azimuth)*  (prestrechStaticAnalysis +  (min(t,-5.)+10)/5*( offsetHorizontal  - prestrechStaticAnalysis )))])
-        @functor with(offsetHorizontal,prestrechStaticAnalysis)   yMotionBottom(x,t,local_azimuth)  = SVector{1}([1.0 * (x[1] - sin(local_azimuth)*  (prestrechStaticAnalysis +  (min(t,-5.)+10)/5*( offsetHorizontal  - prestrechStaticAnalysis )))])
-        @functor with(offsetDownwards)                            zMotionBottom(x,t)                = SVector{1}([1.0 * (x[1] -                      (                           (min(t,-5.)+10)/5*( offsetDownwards                             )))])
+        @functor with(offsetHorizontal,prestrechStaticAnalysis,staticFunction)   xMotionBottom(x,t,local_azimuth)  = SVector{1}([1.0 * (x[1] - cos(local_azimuth)*  (prestrechStaticAnalysis +  staticFunction(t)*( offsetHorizontal  - prestrechStaticAnalysis )))])
+        @functor with(offsetHorizontal,prestrechStaticAnalysis,staticFunction)   yMotionBottom(x,t,local_azimuth)  = SVector{1}([1.0 * (x[1] - sin(local_azimuth)*  (prestrechStaticAnalysis +  staticFunction(t)*( offsetHorizontal  - prestrechStaticAnalysis )))])
+        @functor with(offsetDownwards,staticFunction)                            zMotionBottom(x,t)                = SVector{1}([1.0 * (x[1] -                      (                           staticFunction(t)*( offsetDownwards                             )))])
         addelement!(model,DofConstraint,[nodeLists[iline][nseg][end]],xinod=(1,),xfield=(:t1,), λinod=(1,), λclass=:X, λfield=(:λat1,), gap=xMotionBottom, gargs=(local_azimuth,), mode=equal)
         addelement!(model,DofConstraint,[nodeLists[iline][nseg][end]],xinod=(1,),xfield=(:t2,), λinod=(1,), λclass=:X, λfield=(:λat2,), gap=yMotionBottom, gargs=(local_azimuth,), mode=equal)
         addelement!(model,DofConstraint,[nodeLists[iline][nseg][end]],xinod=(1,),xfield=(:t3,), λinod=(1,), λclass=:X, λfield=(:λat3,), gap=zMotionBottom,                         mode=equal);
         
         # Buoys and Clampweights
-        #==NONE==#
+        nodnum_buoygrav_topchain = 2
+        nodnum_buoygrav_midpolyester = nseg - 1
+        nodnum_buoygrav_bottomchain = nseg
+        @functor with(g, staticFunction) buoygravForce_topchain(t)       = staticFunction(t) * (-3 + 0. ) * 1e3 * abs(g)
+        @functor with(g, staticFunction) buoygravForce_midpolyester(t)   = staticFunction(t) * (-3 + 10.) * 1e3 * abs(g)
+        @functor with(g, staticFunction) buoygravForce_bottomchain(t)    = staticFunction(t) * (-3 + 15.) * 1e3 * abs(g)
+        addelement!(model,DofLoad,[nodeLists[iline][nodnum_buoygrav_topchain][1]];field=:t3,value=buoygravForce_topchain);  
+        addelement!(model,DofLoad,[nodeLists[iline][nodnum_buoygrav_midpolyester][1]];field=:t3,value=buoygravForce_midpolyester);  
+        addelement!(model,DofLoad,[nodeLists[iline][nodnum_buoygrav_bottomchain][1]];field=:t3,value=buoygravForce_bottomchain);  
 
         # Soil contact
         segnumsoil = nseg
@@ -155,9 +162,9 @@ println("======= Forward solve =======")
     
     # Forward solve
     initialstate = initialize!(model)
-    statesFWD_static = solve(SweepX{0}; initialstate, time=staticLoadSteps, verbose=false, maxΔx=1e-6, maxiter=60)
+    statesFWD_static = solve(SweepX{0}; initialstate, time=staticLoadSteps, verbose=true, maxΔx=1e-6, maxiter=200)
     
-    plotStaticStates("",length(staticLoadSteps), initialstate, statesFWD_static, "figs/static.png")
+    plotStaticStates("title",length(staticLoadSteps), initialstate, statesFWD_static, "figs/static.png")
     
     println("TOUT VA BIEN : STATIC ANALYSIS")
     
@@ -165,7 +172,7 @@ println("======= Forward solve =======")
     initialstate=statesFWD_static[end], 
     time=forwardTimesteps, 
     maxΔx=1e-6, 
-    verbose=false, 
+    verbose=true, 
     maxiter=100,
     β=1/3.,γ=0.605, # Unconditionally stable for : γ >= .5 &&  2 β >= γ)
     )

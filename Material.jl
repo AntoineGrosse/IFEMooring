@@ -17,7 +17,6 @@ x1_Cqₜ      =   0.5 *   0.5 * ρ * x1_Dh          # Transverse drag coefficien
 x1_Cqₙ      =   2.6 *   0.5 * ρ * x1_Dh         # Normal drag coefficients [N/m/(m/s)^2]
 x1_Clₙ      =   0.0 *   0.5 * ρ * x1_Dh
 x1_Clₜ      =   0.0 *   0.5 * ρ * x1_Dh
-x1_mat         = AxisymmetricChainLinkCrossSection(EA=x1_EA, μ=x1_μ, w=x1_w, Caₜ=x1_Caₜ, Clₜ=x1_Clₜ, Cqₜ=x1_Cqₜ, Caₙ=x1_Caₙ, Clₙ=x1_Clₙ, Cqₙ=x1_Cqₙ)
 
 # Define parameters for cross-section 2 (250mm polyester)
 x2_D        = 0.25                               # Outer diameter [m]
@@ -33,4 +32,3 @@ x2_Cqₜ      =   0.0 *   0.5 * ρ * x2_Dh          # Transverse drag coefficien
 x2_Cqₙ      =   1.6 *   0.5 * ρ * x2_Dh
 x2_Clₙ      =   0.0 *   0.5 * ρ * x2_Dh
 x2_Clₜ      =   0.0 *   0.5 * ρ * x2_Dh
-x2_mat         = AxisymmetricChainLinkCrossSection(EA=x2_EA, μ=x2_μ, w=x2_w, Caₜ=x2_Caₜ, Clₜ=x2_Clₜ, Cqₜ=x2_Cqₜ, Caₙ=x2_Caₙ, Clₙ=x2_Clₙ, Cqₙ=x2_Cqₙ)

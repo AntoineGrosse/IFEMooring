@@ -116,7 +116,7 @@ Muscade.doflist(     ::Type{ChainLink{Mat,true}}) where{Mat} =
 
 # Constructor of the ChainLink element. 
 ChainLink(nod;kwargs...) = ChainLink{false}(nod;kwargs...) # by default, ChainLink does not have Udof.
-function ChainLink{Udof}(nod::Vector{Node};mat,ϵₛ=eps()) where {Udof}
+function ChainLink{Udof}(nod::Vector{Node};mat,ϵₛ=10*eps()) where {Udof}
     c       = coord(nod)
     # Position of the middle of the element in the global coordinate system (as-meshed)
     cₘ      = SVector{3}((c[1]+c[2])/2)
@@ -175,7 +175,7 @@ vec3(v,ind1,ind2,ind3) = SVector{3,eltype(v)}(v[ind1],v[ind2],v[ind3]);
     L_       = norm(tg_)
     δ_       = tg_/L_
     # Strains
-    ε_       = max(eps(),L/o.Lₛ - 1)
+    ε_       = max(eps(),L_/o.Lₛ - 1)
     # Compute how strains vary with nodal displacements (will be used in the Princple of Virtual Work, PVW)
     ☼ε,δ = motion⁻¹{P,ND}(ε_,δ_); δ₀ = ∂0(δ)
     ε∂X₀ = 1/o.L₀*SVector{6}(-δ₀[1],-δ₀[2],-δ₀[3],δ₀[1],δ₀[2],δ₀[3]) 

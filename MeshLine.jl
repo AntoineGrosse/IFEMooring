@@ -31,7 +31,7 @@ function MeshLine(model, rawNode, azimuth,eltype,xSection,segLength,nel)
     nodeList[1]  =  vcat(topNode.nodID, nodid);
 
     # Populate list for the intermediate segments (if they exist)
-    if nseg>2
+    if nseg>1
         for segid ∈ 2:nseg-1
             local nodid         = addnode!(model,nodeCoord[segid][2:end,:])
             firstNode[segid]    = lastNode[segid-1]

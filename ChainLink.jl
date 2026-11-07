@@ -116,7 +116,7 @@ Muscade.doflist(     ::Type{ChainLink{Mat,true}}) where{Mat} =
 
 # Constructor of the ChainLink element. 
 ChainLink(nod;kwargs...) = ChainLink{false}(nod;kwargs...) # by default, ChainLink does not have Udof.
-function ChainLink{Udof}(nod::Vector{Node};mat,ϵₛ=eps()) where {Udof}
+function ChainLink{Udof}(nod::Vector{Node};mat,ϵₛ=10*eps()) where {Udof}
     c       = coord(nod)
     # Position of the middle of the element in the global coordinate system (as-meshed)
     cₘ      = SVector{3}((c[1]+c[2])/2)

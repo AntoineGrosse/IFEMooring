@@ -22,9 +22,9 @@ function animateStates(title, loadStepsIterator, azimuth_deg, elevation_deg, wat
 end
 
 function plotStaticStates(title, maxstep, initialstate, vec_states, savepath)
-    fig      = Figure(size = (1000,1000))
-    ax = Axis3(fig[1,1])
-    draw!(ax,initialstate)
+    fig      = Figure(size = (2000,1000))
+    ax = Axis3(fig[1,1],title=title)
+    # draw!(ax,initialstate)
     # Plot the static analysis sequence
     for stateIdx ∈ 1:maxstep
         draw!(ax,vec_states[stateIdx])
