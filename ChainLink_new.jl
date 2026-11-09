@@ -176,7 +176,7 @@ vec3(v,ind1,ind2,ind3) = SVector{3,eltype(v)}(v[ind1],v[ind2],v[ind3]);
     δ_       = tg_/L_
     # Strains
     ε_       = max(eps(),L_/o.Lₛ - 1)
-    # Compute how strains vary with nodal displacements (will be used in the Princple of Virtual Work, PVW)
+    # Compute how tensions vary with nodal displacements (will be used in the Princple of Virtual Work, PVW)
     ☼ε,δ = motion⁻¹{P,ND}(ε_,δ_); δ₀ = ∂0(δ)
     ε∂X₀ = 1/o.L₀*SVector{6}(-δ₀[1],-δ₀[2],-δ₀[3],δ₀[1],δ₀[2],δ₀[3]) 
     # Compute motions of Gauss points
@@ -184,7 +184,7 @@ vec3(v,ind1,ind2,ind3) = SVector{3,eltype(v)}(v[ind1],v[ind2],v[ind3]);
     xGP = motion⁻¹{P,ND}(xGP_)  
     # Compute loads at Gauss points
     gpContrib = ntuple(ngp) do igp              
-        fᵢ,fₑ     = ☼resultants(o.mat,ε,xGP[igp],δ,t) # Compute loads from strains/motions, etc.
+        fᵢ,fₑ     = ☼resultants(o.mat,ε,xGP[igp],δ,t) # Compute loads from tensions/motions, etc.
         fₑ        = Udof ? fₑ-∂0(U) : fₑ       # If there are unknown loads, they're added here (U is per unit length)
         x∂X₀ = SMatrix{3,6,𝕣,18}(
             ψ₁(o.ζgp[igp]),0,0,0,ψ₁(o.ζgp[igp]),0,
@@ -212,53 +212,127 @@ Optional arguments (and their default values) are
 - `Udof` (`true` iff element has Udofs) wether to draw U-forces.
 - `Uscale = 1.` How many meter is a Newton per meter?
 """
-function Muscade.allocate_drawing(axis,o::AbstractVector{ChainLink{Tmat,Udof}};kwargs...) where{Tmat,Udof}
-    args                 = default{:ChainLink     }(kwargs,(;)     )  
-    section              = default{:section         }(args,zeros(2,0))  
-    nsec                 = size(section,2)                            
-    opt = (default(args,(line_color=:black,Uscale=1.,Udof=Udof))...,nel= length(o))
-    nel_udof          = opt.Udof          ? opt.nel   : 0
-    mut=(
-            node         = 𝕣2(undef,3,3*opt.nel)                        ,
-            shape_x      = 𝕣2(undef,3,3*opt.nel)           ,   
-            ucrest       = 𝕣2(undef,3,5*nel_udof)                       , # idim, 6point-lift,iel
-        )   
-    return mut,opt
+
+function Muscade.allocate_drawing(
+    axis,
+    o::AbstractVector{ChainLink{Tmat,Udof}};
+    kwargs...
+) where {Tmat,Udof}
+
+    args = default{:ChainLink}(kwargs, (;))
+
+    opt = (
+        default(args, (
+            line_colormap = :viridis,
+            line_colorrange = tension_range,
+            line_color = :black,
+            Uscale = 1.,
+            Udof = Udof
+        ))...,
+        nel = length(o)
+    )
+
+    nel_udof = opt.Udof ? opt.nel : 0
+
+    mut = (
+        node = 𝕣2(undef, 3, 3 * opt.nel),
+        shape_x = 𝕣2(undef, 3, 3 * opt.nel),
+        tension = Vector{𝕣}(undef, 3 * opt.nel),
+        ucrest = 𝕣2(undef, 3, 5 * nel_udof)
+    )
+
+    return mut, opt
 end
 
-function Muscade.update_drawing(axis,o::AbstractVector{ChainLink{Tmat,Udof}},oldmut,opt, Λ,X,U,A,t,SP,dbg) where{Tmat,Udof} 
-    mut               = oldmut 
-    X₀                = ∂0(X) # Nodal displacements
-    U₀                = ∂0(U) # External forces
-    it1,it2           = SVector{3}(1:3),SVector{3}(4:6)
-    node              = reshape(mut.node,       (3,3,opt.nel))
-    shape_x           = reshape(mut.shape_x,    (3,3,opt.nel))
-    if opt.Udof       
-        ucrest        = reshape(mut.ucrest,      (3,5         ,opt.nel)) 
+
+function Muscade.update_drawing(
+    axis,
+    o::AbstractVector{ChainLink{Tmat,Udof}},
+    oldmut,
+    opt,
+    Λ,
+    X,
+    U,
+    A,
+    t,
+    SP,
+    dbg
+) where {Tmat,Udof}
+
+    mut = oldmut
+
+    X₀ = ∂0(X)
+    U₀ = ∂0(U)
+
+    it1, it2 = SVector{3}(1:3), SVector{3}(4:6)
+
+    node = reshape(mut.node, (3, 3, opt.nel))
+    shape_x = reshape(mut.shape_x, (3, 3, opt.nel))
+    tension = reshape(mut.tension, (3, opt.nel))
+
+    if opt.Udof
+        ucrest = reshape(mut.ucrest, (3, 5, opt.nel))
     end
-    for (iel,oᵢ) = enumerate(o)
-        node[:,1,iel] = oᵢ.cₘ - oᵢ.tgₘ/2 + X₀[it1,iel]
-        node[:,2,iel] = oᵢ.cₘ + oᵢ.tgₘ/2 + X₀[it2,iel]
-        node[:,3,iel].= NaN  
-        shape_x[:,1,iel] = oᵢ.cₘ - oᵢ.tgₘ/2 + X₀[it1,iel]
-        shape_x[:,2,iel] = oᵢ.cₘ + oᵢ.tgₘ/2 + X₀[it2,iel]
-        shape_x[:,3,iel].= NaN  
+
+    for (iel, oᵢ) in enumerate(o)
+
+        x₁ = oᵢ.cₘ - oᵢ.tgₘ / 2 + X₀[it1, iel]
+        x₂ = oᵢ.cₘ + oᵢ.tgₘ / 2 + X₀[it2, iel]
+
+        node[:, 1, iel] = x₁
+        node[:, 2, iel] = x₂
+        node[:, 3, iel] .= NaN
+
+        shape_x[:, 1, iel] = x₁
+        shape_x[:, 2, iel] = x₂
+        shape_x[:, 3, iel] .= NaN
+
+        strain = max(eps(), norm(x₂ - x₁) / oᵢ.Lₛ - 1)
+        tension[:, iel] .= oᵢ.mat.EA * strain
+
         if opt.Udof
-        ucrest[:,1,iel] = node[:,1,iel]
-        ucrest[:,2,iel] = node[:,1,iel] +  view(U₀,:,iel) * opt.Uscale
-        ucrest[:,3,iel] = node[:,2,iel] +  view(U₀,:,iel) * opt.Uscale
-        ucrest[:,4,iel] = node[:,2,iel]
-        ucrest[:,5,iel].= NaN
+            ucrest[:, 1, iel] = node[:, 1, iel]
+            ucrest[:, 2, iel] =
+                node[:, 1, iel] + view(U₀, :, iel) * opt.Uscale
+            ucrest[:, 3, iel] =
+                node[:, 2, iel] + view(U₀, :, iel) * opt.Uscale
+            ucrest[:, 4, iel] = node[:, 2, iel]
+            ucrest[:, 5, iel] .= NaN
         end
     end
+
     return mut
 end
 
-function Muscade.display_drawing!(axis,::Type{ChainLink{Tmat,Udof}},obs,opt) where{Tmat,Udof}
-    scatter!(           axis, obs.node       ,color = opt.line_color , marker=:circle,markersize=7)  
-    lines!(             axis, obs.shape_x    ,color = opt.line_color ,linewidth=7                )
-    opt.Udof  && lines!(axis, obs.ucrest     ,color = :red           ,linewidth=.5                )    
+
+function Muscade.display_drawing!(
+    axis,
+    ::Type{ChainLink{Tmat,Udof}},
+    obs,
+    opt
+) where {Tmat,Udof}
+
+    scatter!(
+        axis,
+        obs.node,
+        color = opt.line_color,
+        marker = :circle,
+        markersize = 7
+    )
+
+    lines!(
+        axis,
+        obs.shape_x,
+        color = obs.tension,
+        colormap = opt.line_colormap,
+        colorrange = opt.line_colorrange,
+        linewidth = 7
+    )
+
+    opt.Udof && lines!(
+        axis,
+        obs.ucrest,
+        color = :red,
+        linewidth = .5
+    )
 end
-
-
-

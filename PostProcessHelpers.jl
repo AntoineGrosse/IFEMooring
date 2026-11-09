@@ -1,23 +1,54 @@
 using Muscade, GLMakie
 
-function animateStates(title, loadStepsIterator, azimuth_deg, elevation_deg, waterDepth, vec_states, savepath)
-# Forward animation
-    fig_anim   = Figure(size = (2200,1000))
-    ax = Axis3(fig_anim[1,1],
-        xgridvisible=false,ygridvisible=false,zgridvisible=false,
-        xlabelsize=40,ylabelsize=40,zlabelsize=40,
-        xlabel="x [m]",ylabel="y [m]",zlabel="z [m]",
-        xticklabelsize=30,yticklabelsize=30,zticklabelsize=30,
-        aspect = (1,1,.3),
-        title=title)
-    xlims!(ax,-1000,1000); ylims!(ax,-1000,1000); zlims!(ax,-waterDepth - 20,10)
-    graphic = draw!(ax,vec_states[1])
-    ax.azimuth[]=-π/2+π/180*azimuth_deg;
-    ax.elevation[]=0+π/180*elevation_deg;
-    framerate = 20
-    record(fig_anim, savepath, loadStepsIterator;
-    framerate = framerate) do stateIdx
-        draw!(graphic,vec_states[stateIdx])
+function animateStates(
+    title,
+    loadStepsIterator,
+    azimuth_deg,
+    elevation_deg,
+    waterDepth,
+    vec_states,
+    savepath,
+    tension_range
+)
+    fig_anim = Figure(size = (2000, 1000))
+
+    ax = Axis3(
+        fig_anim[1, 1],
+        xlabel = "x [m]",
+        ylabel = "y [m]",
+        zlabel = "z [m]",
+        aspect = (1, 1, .3),
+        title = title
+    )
+
+    xlims!(ax, -1000, 1000)
+    ylims!(ax, -1000, 1000)
+    zlims!(ax, -waterDepth - 20, 10)
+
+    colormap = :viridis
+
+    graphic = draw!(
+        ax,
+        vec_states[1];
+        ChainLink = (
+            line_colormap = colormap,
+            line_colorrange = tension_range
+        )
+    )
+
+    Colorbar(
+        fig_anim[1, 2],
+        colormap = colormap,
+        limits = tension_range,
+        label = "Tension [N]",
+        height = Relative(.7)
+    )
+
+    ax.azimuth[] = -π / 2 + π / 180 * azimuth_deg
+    ax.elevation[] = π / 180 * elevation_deg
+
+    record(fig_anim, savepath, loadStepsIterator; framerate = 20) do stateIdx
+        draw!(graphic, vec_states[stateIdx])
     end
 end
 

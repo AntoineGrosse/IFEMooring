@@ -164,7 +164,7 @@ println("======= Forward solve =======")
     initialstate = initialize!(model)
     statesFWD_static = solve(SweepX{0}; initialstate, time=staticLoadSteps, verbose=true, maxΔx=1e-6, maxiter=200)
     
-    plotStaticStates("title",length(staticLoadSteps), initialstate, statesFWD_static, "figs/static.png")
+    # plotStaticStates("title",length(staticLoadSteps), initialstate, statesFWD_static, "figs/static.png")
     
     println("TOUT VA BIEN : STATIC ANALYSIS")
     
@@ -177,7 +177,8 @@ println("======= Forward solve =======")
     β=1/3.,γ=0.605, # Unconditionally stable for : γ >= .5 &&  2 β >= γ)
     )
     
-    animateStates("Animation Forward analysis", 1:10:length(forwardTimesteps), 1., 1., waterDepth, statesFWD_dynamic, "figs/animationFWD_benchmark.mp4")
+    tension_range = (0,4e6)
+    animateStates("Animation Forward analysis", 1:10:length(forwardTimesteps), 1., 1., waterDepth, statesFWD_dynamic, "figs/animationFWD_benchmark.mp4", tension_range)
     
     println("TOUT VA BIEN : DYNAMIC ANALYSIS")
 
