@@ -6,103 +6,35 @@ include("MeshLineGauge.jl")
 # include("ChainLink.jl")
 include("ChainLink_new.jl")
 include("PostProcessHelpers.jl")
-include("Material.jl")
 currentDir = @__DIR__
 cd(currentDir)
 
-# Cost factors
-#==NONE==#
-
-# Strain std
-#==NONE==#
 
 # Parameters
-@show maxΔx = 1e-5
-@show maxΔa = 1e-5
-@show maxiterinv = 12
-
-# Load steps
-staticLoadSteps = (-20:0.01:0)
-forwardTimesteps = (0:0.01:20) .+ eps()
-function ramp(t1,t2,slope,t)
-    return max(0,t-t1)*slope - max(0,t-t2)*slope
-end
-staticFunction(t) = ramp(-10., 0., 1/10, t)
-gravityFunction(t) = ramp(-20., -10., 1/10, t)
-
-# scaling
-#==NONE==#
-
-# Script booleans
-#==NONE==#
-
-# Plot booleans
-#==NONE==#
-
-# Loss functions
-δ = 1e-2 # For Huber loss
-quadra(x) = x⋅x # quadratic loss
-expo(x) = 1 - exp(- x⋅x/1e10) # exponential loss
-cauchy(x) = log(1 + x⋅x/1e10) # Cauchy loss
-huber(x) = VALUE(∂0(x⋅x)) < δ ? 0.5 * x⋅x : δ * (sqrt(x⋅x) - 0.5*δ) # Huber loss
-pseudo_huber(x) = δ^2 * (sqrt(1 + x⋅x/(δ^2)) - 1) # Pseudo huber loss
-scaled_quadra(x) = sqrt(1 + x⋅x) # Custom
-ch(x) = cosh(x) # Cosh
-logch(x) = log(ch(x)) # Logcosh
-mse(x) = (x⋅x/length(x))
-loss_function = quadra
-
-# Materials
-@functor with() g̃_(t) = SVector(0.,0.,1. * gravityFunction(t));
-x1_mat         = AxisymmetricChainLinkCrossSection(EA=x1_EA, μ=x1_μ, w=x1_w, g̃=g̃_, Caₜ=x1_Caₜ, Clₜ=x1_Clₜ, Cqₜ=x1_Cqₜ, Caₙ=x1_Caₙ, Clₙ=x1_Clₙ, Cqₙ=x1_Cqₙ)
-x2_mat         = AxisymmetricChainLinkCrossSection(EA=x2_EA, μ=x2_μ, w=x2_w, g̃=g̃_, Caₜ=x2_Caₜ, Clₜ=x2_Clₜ, Cqₜ=x2_Cqₜ, Caₙ=x2_Caₙ, Clₙ=x2_Clₙ, Cqₙ=x2_Cqₙ)
-
-# Segments
-nel = [5, 23, 12, 7]
-segLength = [150., 414., 250., 150.]
-xSection = [x1_mat, x2_mat, x2_mat, x1_mat]
-nseg = length(nel)
-
-# Geometry
-waterDepth = 200.
-fairleadDepth = 10.
-offsetHorizontal = 1000. - sum(segLength) - 58.75
-offsetDownwards = -waterDepth + fairleadDepth
-prestrechStaticAnalysis = sum(segLength) * 0.001
-
-initX1 = 58.75
-initY1 = 0.
-initZ1 = -fairleadDepth
-
-topInitCoord = [
-    [initX1,initY1,initZ1],
-]
-nlines = length(topInitCoord)
-yaw0 = 0.
-azimuths = [
-    (0. - yaw0) * π/180.,
-]
-
-# Loading inputs
-#==NONE==#
+include("Input.jl")
+@show nlines = 3
 
 # Prescribed displacements
-#------------------------------------------
-# xMotion1(t) = 0.
-# yMotion1(t) = 0.
-# zMotion1(t) = 0.
-xMotion1(t) = exp(min((t-0.5)/0.001,0)) * 3 * sin(0.5 * t)
-yMotion1(t) = exp(min((t-0.5)/0.001,0)) * 3 * sin(0.3 * t)
-zMotion1(t) = exp(min((t-0.5)/0.001,0)) * 1 * sin(0.1 * t)
+file_path = "input\\test_wo.csv"
+# file_path_w = "input\\test_w.csv"
+# file_path = "input\\test_wo_20years.csv"
+# file_path_w = "input\\test_w_20years.csv"
+prescribed_disp_interp = read_input(file_path)
 
+# # xMotion1(t) = 0.
+# # yMotion1(t) = 0.
+# # zMotion1(t) = 0.
+# xMotion1(t) = exp(min((t-0.5)/0.001,0)) * 3 * sin(0.5 * t)
+# yMotion1(t) = exp(min((t-0.5)/0.001,0)) * 3 * sin(0.3 * t)
+# zMotion1(t) = exp(min((t-0.5)/0.001,0)) * 1 * sin(0.1 * t)
 
-prescribed_disp_interp = [
-    [
-        xMotion1,
-        yMotion1,
-        zMotion1,
-    ],
-]
+# prescribed_disp_interp = [
+#     [
+#         xMotion1,
+#         yMotion1,
+#         zMotion1,
+#     ],
+# ]
 
 ##########################################
 ## Forward
@@ -114,8 +46,6 @@ println("======= Forward solve =======")
     nodeLists  =   Vector{Vector{Vector{Muscade.NodID}}}(undef,nlines)
     elementLists = Vector{Vector{Muscade.EleID}}(undef,nlines)
     anodeLists = Vector{Muscade.NodID}(undef,nlines)
-
-    println("TOUT VA BIEN : DEF LISTES")
 
     model = Model(:testline)
     for iline in 1:nlines
@@ -157,17 +87,11 @@ println("======= Forward solve =======")
         addelement!(model,DofConstraint,[topNodes[iline]],xinod=(1,),xfield=(:t2,), λinod=(1,), λclass=:X, λfield=(:λpt2,), gap=MotionTop, gargs = (yMotion,), mode=equal)
         addelement!(model,DofConstraint,[topNodes[iline]],xinod=(1,),xfield=(:t3,), λinod=(1,), λclass=:X, λfield=(:λpt3,), gap=MotionTop, gargs = (zMotion,), mode=equal);
     end
-
-    println("TOUT VA BIEN : DEF MODEL AND ALL")
     
-    # Forward solve
+    # Forward Static solve
     initialstate = initialize!(model)
     statesFWD_static = solve(SweepX{0}; initialstate, time=staticLoadSteps, verbose=true, maxΔx=1e-6, maxiter=200)
-    
-    # plotStaticStates("title",length(staticLoadSteps), initialstate, statesFWD_static, "figs/static.png")
-    
-    println("TOUT VA BIEN : STATIC ANALYSIS")
-    
+    # Forward Dynamic solve
     statesFWD_dynamic = solve(SweepX{2};
     initialstate=statesFWD_static[end], 
     time=forwardTimesteps, 
@@ -178,8 +102,6 @@ println("======= Forward solve =======")
     )
     
     tension_range = (0,4e6)
-    animateStates("Animation Forward analysis", 1:10:length(forwardTimesteps), 1., 1., waterDepth, statesFWD_dynamic, "figs/animationFWD_benchmark.mp4", tension_range)
-    
-    println("TOUT VA BIEN : DYNAMIC ANALYSIS")
+    animateStates("Animation Forward analysis", 1:2:length(forwardTimesteps), 10., 1., waterDepth, statesFWD_dynamic, "figs/animationFWD_benchmark.mp4", tension_range)
 
 end
